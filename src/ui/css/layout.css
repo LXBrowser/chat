@@ -190,12 +190,17 @@ h1, h2, h3, h4 {
   color: var(--sponsor);
 }
 
-/* --- Transcript (left pane) --------------------------------------------- */
+/* --- Conversation stream (centre pane) ---------------------------------- */
 
 .transcript {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  /* Takes the slack left by the picker and the status row above it, and scrolls
+     itself rather than pushing the composer off the pane. */
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .msg {
@@ -203,10 +208,16 @@ h1, h2, h3, h4 {
   border-radius: var(--radius-sm);
   border: 1px solid var(--hairline);
   background: var(--glass-faint);
+  /* Declared once, here, rather than on both sides: a bubble that can use the full
+     pane width stops reading as a conversation. Agent messages sit left, the user's
+     right — `align-self` does it, because the column is a flex container. */
+  max-width: 78%;
+  align-self: flex-start;
 }
 
 .msg--user {
   background: var(--accent-soft);
+  align-self: flex-end;
 }
 
 .msg__role {
@@ -215,7 +226,9 @@ h1, h2, h3, h4 {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: .05em;
-  color: var(--ink-400);
+  /* --ink-500, not --ink-400: this sits on --glass-faint, and accessibility.md is
+     explicit that --ink-400 clears only --white and --silver-050. */
+  color: var(--ink-500);
 }
 
 .msg__body {
@@ -242,23 +255,6 @@ h1, h2, h3, h4 {
 
 @media (prefers-reduced-motion: reduce) {
   .msg--streaming .msg__body::after { animation: none; }
-}
-
-/* --- Agent log stream (centre pane) ------------------------------------- */
-
-.log {
-  margin: 0;
-  padding: 12px 14px;
-  border-radius: var(--radius-sm);
-  background: #1c2431;             /* the dark `pre` treatment, not glass —
-                                      see extension-adaptation.md */
-  color: #e2e7ee;
-  font-family: var(--mono);
-  font-size: 12px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  max-height: 100%;
 }
 
 /* --- Composer (right pane) ---------------------------------------------- */
@@ -432,7 +428,9 @@ h1, h2, h3, h4 {
   min-width: 0;
   font-size: 12px;
   line-height: 1.35;
-  color: var(--ink-400);
+  /* --ink-500, not --ink-400. This is where a failed send now says why, so it is the
+     last text in the extension that should fail contrast on the glass footer. */
+  color: var(--ink-500);
   overflow-wrap: anywhere;
 }
 

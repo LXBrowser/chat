@@ -1,11 +1,16 @@
 /**
  * views.js — DOM rendering for the three panes.
  *
- * Kept separate from the modules that own the data, so `agents.js` and `sessions.js`
- * stay testable without a DOM and this file stays about pixels rather than state.
+ * Kept separate from the modules that own the data, so `sessions.js` stays testable
+ * without a DOM and this file stays about pixels rather than state.
+ *
+ * Pane assignment: the left pane is the chat history, the centre pane is the model picker,
+ * the status row and the conversation stream, and the right pane is everything you compose
+ * with. The transcript used to live in the left pane above the history, which is why
+ * `#transcript` is here and why nothing in this file has to know where it is — every
+ * renderer targets it by id.
  */
 
-import * as agents from './agents.js';
 import * as sessions from './sessions.js';
 import { MODEL_PRESETS, effectiveModel } from './storage.js';
 
@@ -56,7 +61,7 @@ function text(str) {
 }
 
 // ---------------------------------------------------------------------------
-// Left pane — history and transcript
+// Left pane — history
 // ---------------------------------------------------------------------------
 
 /**
@@ -151,7 +156,7 @@ export async function renderTranscript() {
 }
 
 // ---------------------------------------------------------------------------
-// Left pane — streaming
+// Centre pane — streaming
 // ---------------------------------------------------------------------------
 
 /**
@@ -174,6 +179,7 @@ export function startStream() {
 
   pane.append(stream);
   pane.scrollTop = pane.scrollHeight;
+  setStreaming(true);
 
   return { body };
 }
@@ -199,6 +205,7 @@ export function pushDelta(handle, chunk) {
 export function endStream() {
   const node = stream;
   stream = null;
+  setStreaming(false);
   if (!node) return;
 
   node.classList.remove('msg--streaming');
@@ -215,6 +222,7 @@ export function endStream() {
 export function discardStream() {
   const node = stream;
   stream = null;
+  setStreaming(false);
   node?.remove();
 }
 
@@ -233,70 +241,30 @@ export async function renderTitle() {
 }
 
 // ---------------------------------------------------------------------------
-// Centre pane — agent dropdown and log
+// Centre pane — the single status row
 // ---------------------------------------------------------------------------
 
 /**
- * Redraws the dropdown from `agents.list()`, which holds only running agents.
+ * Sets the status row, in place.
  *
- * A finished agent is therefore absent here without this function doing anything about
- * it. If `selectedId` is no longer in the list, the selection falls back to the first
- * running agent — so watching one agent finish moves you to another rather than to an
- * empty pane.
+ * This is the whole of the agent-status surface, and the constraint is that it stays one
+ * row: `textContent` is assigned to the node that is already there, and nothing is ever
+ * appended. The append-only log it replaced could not do this — accumulating lines is all
+ * it was for — which is why it had to be a different signal and not a view of the same one.
+ *
+ * @param {string} text   What to show. Replaces whatever was there.
+ * @param {object} [state]
+ * @param {boolean} [state.running] Accent dot — work is in flight.
+ * @param {boolean} [state.done]   Green dot — work finished.
  */
-export function renderAgents(selectedId) {
-  const running = agents.list();
-  const menu = $('agent-select-menu');
-  const trigger = $('agent-select-trigger');
-  $('agent-count-badge').textContent =
-    `${running.length} running`;
-
-  if (!running.length) {
-    render(
-      menu,
-      el('li', {
-        className: 'agent-select__empty',
-        textContent: 'No agents running.',
-      }),
-    );
-    trigger.textContent = 'No agent selected';
-    return;
-  }
-
-  const selected = running.find((a) => a.id === selectedId) ?? running[0];
-  trigger.textContent = selected.name;
-
-  render(
-    menu,
-    ...running.map((a) =>
-      el(
-        'li',
-        { role: 'none' },
-        el(
-          'button',
-          {
-            type: 'button',
-            role: 'option',
-            className: `agent-select__option${a.id === selected.id ? ' is-selected' : ''}`,
-            dataset: { agentId: a.id },
-            'aria-selected': String(a.id === selected.id),
-          },
-          el('span', { className: 'dot dot--running', 'aria-hidden': 'true' }),
-          el('span', { textContent: a.name }),
-          el('span', { className: 'chip', textContent: a.task.slice(0, 22) }),
-        ),
-      ),
-    ),
-  );
-
-  return selected;
+export function setActivity(text, { running = false, done = false } = {}) {
+  $('activity-text').textContent = text;
+  $('activity-dot').className = `dot${running ? ' dot--running' : ''}${done ? ' dot--done' : ''}`;
 }
 
-/** Writes an agent's log into the centre pane. */
-export function renderLog(agentId) {
-  $('agent-log').textContent = agentId
-    ? agents.logLines(agentId) || '(no output yet)'
-    : 'Waiting for an agent.';
+/** Marks the transcript busy while an answer is arriving. */
+export function setStreaming(streaming) {
+  $('transcript').setAttribute('aria-busy', String(streaming));
 }
 
 // ---------------------------------------------------------------------------
