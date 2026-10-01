@@ -38,9 +38,9 @@ are stored. The main agent can search the web, read what it finds, and rename th
 ### Extension shell
 
 * `manifest.json` — MV3, overriding the new tab, with a content security policy that
-  forbids remote code, a module service worker, and host permissions for OpenRouter,
-  DuckDuckGo, a DNS resolver, and `https://*/*`. No API permissions: no `activeTab`, no
-  `tabs`, no `scripting`.
+  forbids remote code, a module service worker, the `storage` permission, and host
+  permissions for OpenRouter, DuckDuckGo, a DNS resolver, and `https://*/*`. No browsing
+  permissions: no `activeTab`, no `tabs`, no `scripting`.
 * `src/db.js` — three object stores behind a promise wrapper, so no calling code handles
   a raw `IDBRequest`. `message_index` is derived rather than accepted, and the
   `chat_messages.session_id` foreign key is enforced in code, because IndexedDB has no
@@ -212,6 +212,48 @@ uppercase with letter-spacing reads as collision rather than as alignment. It no
 — the value `.eyebrow` already uses as its own bottom margin, so no new spacing value
 enters the design system — and the hint below the textarea kept its 8px.
 
+### The manifest declared no permissions
+
+**`manifest.json` had no `permissions` key at all**, so every call through
+`chrome.storage.local` threw `TypeError: Cannot read properties of undefined (reading
+'local')`, and `boot()` rejected at step 1 — before the gate, the settings, the database or
+any listener. That single missing line explains all three symptoms at once: the modal never
+appeared, the model dropdown stayed empty, and Settings reloaded a page that was already
+broken.
+
+In Manifest V3 Chrome only injects `chrome.storage` into an extension's pages when
+`"storage"` is declared. Undeclared, the namespace is `undefined` — there is no partial
+version of it, and no warning at load time. **The service worker was dead for the same
+reason**: `src/background.js` reads the key through that namespace in its own context, so
+no OpenRouter request could ever have been made even with a key stored. Every "unverified"
+caveat about the tool loop, the port and the streaming path sat behind this one line.
+
+`"permissions": ["storage"]` is now declared, and it is the complete set — `src/` uses only
+`chrome.storage` and `chrome.runtime`, and `chrome.runtime` needs no permission.
+
+### The page now names the fault instead of showing a type error
+
+The failure above was reported as a bare `TypeError` beside a Send button, with Settings
+wired to reload — which is how a missing permission and a missing extension context were
+confused for a round. **Both faults look identical from outside and they are not the same
+problem**, so the page now checks before it does any work and says which one it is:
+`startupFault()` distinguishes a page that is not running as an extension page from one
+whose manifest lost the permission, and reports it in those words.
+
+**A reload is no longer offered where it cannot help.** On a manifest fault the page
+disables Send and says why, and deliberately does not wire Settings to reload — that was
+the loop, clicking Settings to reload an already-broken context. The reload now exists only
+on the path where re-running `boot()` re-opens a cancelled gate.
+
+### The composer gap matches the rest of the pane
+
+The label above the textarea moved from 4px to **6px**, matching `.model` — the only other
+vertically-stacked flush eyebrow in the right pane. At 4px the composer was the tightest
+flush label in the design, against the largest control in the pane. `.composer__hint`'s
+rule is deleted rather than retuned: it carried a margin only to defend a gap the flex
+column already provides, and at 6px it would have needed a 2px shim that breaks the next
+time anyone edits the gap.
+
 ## Not in this release
 
 * **No synthesis.** Sub-agents each make a real OpenRouter call and log their answer in the
@@ -241,30 +283,42 @@ per round.
 
 ## Unverified
 
-**The extension has been loaded in Chrome twice, and neither run exercised a line of
-application behaviour.** The first reported the CSP violation and the right-pane overlap
-above. The second, after that fix, found the composer label sitting on the textarea and
-the API-key modal never appearing — the modal because `boot()` was never called, which
-means the whole application was inert. **Nothing in `app.js` has ever run in a browser.**
+**The extension has been loaded in Chrome three times, and no run has exercised a line of
+application behaviour to completion.** The first reported the CSP violation and the
+right-pane overlap above. The second, after that fix, found the composer label sitting on
+the textarea and the API-key modal never appearing — the modal because `boot()` was never
+called, which means the whole application was inert. The third was the first live execution
+of anything in `app.js`, and it rejected at step 1 because the manifest declared no
+permissions. **All three faults are fixed and none of the fixes has been observed running.**
 
-What *has* been observed is presentation: the three panes render under the extension's
-own CSP, the composer takes the remaining height, the Send/Clear footer is not overlapped,
-and after the second fix the label sits clear of the textarea.
+What *has* been observed is presentation: the three panes render under the extension's own
+CSP, the composer takes the remaining height, and the Send/Clear footer is not overlapped.
 
 Verified: every module passes `node --check`; every import and every DOM id target
 resolves; no `style` attribute or style assignment anywhere in `src/`; all 47 classes used
-in `index.html` are defined in the stylesheets; and `boot()` resolves to an invocation with
-no top-level function left uncalled. 102 checks run under Node against stubbed `chrome` and
+in `index.html` are defined in the stylesheets; `boot()` resolves to an invocation with no
+top-level function left uncalled; and every `chrome.<api>` used in `src/` has its permission
+declared or is one that needs none. 105 checks run under Node against stubbed `chrome` and
 `fetch` — 26 on the service worker (SSE handling, the tool loop, and assertions that the key
 never appears in anything the worker posts), 11 on the model settings, 11 on the port
 client, 46 on the tools (search parsing, HTML-to-text, entity decoding, the SSRF guard
 including rebinding across a redirect, and both network tools against a stubbed fetch), 8
-on the page side of a tool round-trip, and 21 on the agent registry against the auto-remove
-contract.
+on the page side of a tool round-trip, 21 on the agent registry against the auto-remove
+contract, and 3 on the manifest's permissions.
 
 **Not one of those checks executes `app.js`, and the repository has no DOM harness that
 could.** That is how a file with a fully written, correct, entirely unreachable `boot()`
-passed every check in two consecutive rounds.
+passed every check in two consecutive rounds — and how a manifest with no `permissions` key
+passed them again. The uncalled-function assertion and the permission sweep close those two
+holes and nothing else: both are one-shot checks against faults already fixed, not standing
+guards.
+
+**The composer label is the one thing still not settled.** The CSS committed before this
+release computed roughly 17px of clearance between the glyphs and the textarea's border,
+which cannot produce the reported picture, so a stale stylesheet is the likelier
+explanation — "sitting exactly on the border line" is what `gap: 0` renders, and that is
+what an earlier release shipped. `getComputedStyle(document.querySelector('.composer')).gap`
+returns `6px` on current CSS and `0px` on a stale sheet.
 
 Not verified: **everything the extension does.** Whether it boots at all past the gate,
 whether OpenRouter accepts these requests or these tool schemas, whether the streaming

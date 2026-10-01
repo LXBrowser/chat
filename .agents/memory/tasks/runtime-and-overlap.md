@@ -17,12 +17,17 @@ stays `0.1.0` — and no change to how the API key is stored, read, or passed.
 
 | # | Title | Scope (one line) | Repository | Branch | Files / areas | PR |
 |---|---|---|---|---|---|---|
-| 1 | Task record | This file, written before the work | LXBrowser/chat | `chore/storage-context-fallback-plan` | `.agents/memory/tasks/`, `memory-index.md` | |
-| 2 | Storage permission and an honest failure message | The manifest declares no `permissions` at all | LXBrowser/chat | `fix/storage-context-fallback` | `manifest.json`, `src/ui/app.js` | |
-| 3 | Composer label spacing | `gap: 4px` → `6px`, matching `.model` | LXBrowser/chat | `fix/composer-label-spacing` | `src/ui/css/layout.css` | |
-| 4 | Release | Changelog, checklist, state, closing entries | LXBrowser/chat | `docs/runtime-and-overlap-release` | `wiki/`, `.agents/memory/` | |
+| 1 | Task record | This file, written before the work | LXBrowser/chat | `chore/storage-context-fallback-plan` | `.agents/memory/tasks/`, `memory-index.md` | [#14](https://github.com/LXBrowser/chat/pull/14) |
+| 2 | Storage permission and an honest failure message | The manifest declares no `permissions` at all | LXBrowser/chat | `fix/storage-context-fallback` | `manifest.json`, `src/ui/app.js` | [#15](https://github.com/LXBrowser/chat/pull/15) |
+| 3 | Composer label spacing | `gap: 4px` → `6px`, matching `.model` | LXBrowser/chat | `fix/composer-label-spacing` | `src/ui/css/layout.css` | [#16](https://github.com/LXBrowser/chat/pull/16) |
+| 4 | Release | Changelog, checklist, state, closing entries | LXBrowser/chat | `docs/runtime-and-overlap-release` | `wiki/`, `.agents/memory/` | [#17](https://github.com/LXBrowser/chat/pull/17) |
 
 Task *k* branches from task *k-1*'s branch and targets it. **No task merges on its own.**
+
+**This forge does not re-target a stacked pull request when its base is deleted.** The
+previous task record says so, and it was not re-tested: as last time, each request is
+re-targeted by hand *before* the merge above it, and every merge is verified by reading
+`master` afterwards rather than by trusting a request's state.
 
 ## The finding, recorded before any of the work
 
@@ -191,3 +196,53 @@ way. **The owner can settle it in one line** at the console —
 `getComputedStyle(document.querySelector('.composer')).gap` returns `6px` on current CSS and
 `0px` on a stale sheet, and only the second of those is a hard-reload problem rather than a
 code one.
+
+### Task 4 — `docs/runtime-and-overlap-release`
+
+**Landed.** Five documents, and the substance of this task is what they now decline to
+claim rather than what they assert.
+
+**"No API permissions" was corrected in two places, and it was the misleading kind of
+true.** The changelog and `env.md` both said the manifest requests no API permissions — no
+`activeTab`, no `tabs`, no `scripting` — which was accurate and implied there was nothing
+to declare. There was: the array did not exist. Both now show the real manifest, and `env.md`
+gains a section on why `storage` fails loudly and `sync` is never asked for.
+
+**The checklist gains the check that would have settled the diagnosis in one line.** Step 1
+used to assume the modal would appear and say nothing about what to do when it did not. It
+now stops the run at that point, names the two faults the page can report, and points at a
+new *Check the page has its permissions* section — one console line that distinguishes a
+missing permission from a page that is not running as an extension. That distinction is the
+one that cost the round.
+
+**"After changing files" now says to open a new tab**, which is the likeliest explanation
+for a stale-stylesheet report: reloading the extension card does not re-fetch anything for
+a new-tab page that is already open, so a change can look like it did nothing.
+
+**A duplicated blockquote was removed from `setup.md`.** The "a pane that looks right is not
+proof that anything works" warning appeared twice, identically, in step 1 — a leftover from
+an earlier edit that a reviewer had not caught and no check looks at. It is now one block,
+and it names both faults rather than only the first.
+
+**`overview.md` and `repository-state.md` now describe three runs, not two.** Both said the
+application had never run; the accurate statement is that no run has exercised a line of
+behaviour *to completion*, and that the third was the first live execution of anything in
+`app.js`. The distinction matters, because "nothing has run" would be false.
+
+**Verified.** `permissions` is exactly `["storage"]`; version still `0.1.0`; every module
+passes `node --check`; `boot()` resolves to an invocation with no uncalled top-level
+function; every DOM id resolves; no inline style attribute anywhere in `src/`; both
+stylesheets brace-balance; all 105 checks pass; no session link in any commit in this stack.
+
+**What the owner has to do, and it is the biggest job in the repository so far.** Reload
+the extension, accept the re-prompt for the new permission, and open a **new** tab. That run
+executes the gate, the model picker, Settings, the port, the service worker, the tool loop
+and `read_page` for the first time — every one of them was waiting behind this one line.
+**Expect further defects.** This record claims the code paths exist and that two of them
+were unreachable; the owner's runtime test is the only thing that closes any of it.
+
+## Done
+
+All four tasks merged. **Still nothing in this stack has been observed running**, and the
+permission fix is what makes the next run the first real one. That is the next session's
+work, not this one's.

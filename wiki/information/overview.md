@@ -37,8 +37,11 @@ built-in search-and-read tool, and keep every conversation in local storage.
 ## Current state
 
 `0.1.0` is written to chat for real, and every item below is implemented. **None of it
-has been observed working.** Until the extension has been reloaded since `boot()` was
-wired up, treat this list as a description of what the code does, not of what it does:
+has been observed working.** Three Chrome runs have each been stopped by a different fault
+— a content-security violation, a `boot()` that was never called, and a manifest with no
+`permissions` at all — and all three are fixed without having been seen to work. Until the
+extension has been reloaded since the `storage` permission was declared, treat this list as
+a description of what the code does, not of what it does:
 
 * load it unpacked; an API-key modal blocks the app until a key is stored
 * start, open, rename, and delete chats — all stored locally in IndexedDB

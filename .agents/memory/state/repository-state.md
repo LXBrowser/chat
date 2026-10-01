@@ -25,7 +25,8 @@ here, and the override table in the root index is empty.
 * `.agents/wiki/context/repository-map.md` — orientation page.
 * `.agents/memory/` — this file and the task records.
 * `wiki/` — `information/overview.md`, `environments/setup.md`, `environments/env.md`.
-* `manifest.json` — MV3, new-tab override, module service worker, four host permissions.
+* `manifest.json` — MV3, new-tab override, module service worker, the `storage` permission,
+  and four host permissions.
 * `src/background.js` — the service worker. Every OpenRouter call, the tool loop, and the
   only place the API key is read.
 * `src/tools.js` — the tool schemas, and the two network tools the worker runs.
@@ -59,10 +60,13 @@ models.
 
 ## What works today
 
-**Nothing on this list has ever run.** `boot()` was found defined and never called, so the
-entire application sat inert behind a correct-looking interface through two Chrome runs
-and every earlier verification pass. `boot()` is now invoked and the gate's rejection is
-handled — but the correct claim is that the code path exists, not that it works.
+**Nothing on this list has ever run to completion.** Two faults stood between the
+application and its first live execution, and each one had to be found by opening Chrome:
+`boot()` was defined and never called, and then `manifest.json` declared no `permissions`
+key at all, so in Manifest V3 Chrome never injected `chrome.storage` and every call through
+it threw. The third Chrome run is the first in which any application code ran at all, and
+it died at step 1 of `boot()` with a `TypeError`. Both are fixed. The correct claim is that
+the code paths exist, not that they work — nothing here has been observed doing any of it.
 
 * Load unpacked; the API-key modal blocks until a key is stored.
 * New chat, open chat, delete chat, rename chat — all against IndexedDB.
@@ -101,28 +105,32 @@ label is clear of the textarea.
 
 ## What has not been verified
 
-**The extension has been loaded in Chrome twice, and neither run exercised a line of
-application behaviour.** The first reported the CSP violation and the right-pane overlap.
-The second reported the composer label sitting on the textarea, and the API-key modal
-never appearing — because `boot()` was defined and never called. Nothing in `app.js` has
-ever executed in a browser. It is now invoked, and that has not been observed either.
+**The extension has been loaded in Chrome three times, and no run has exercised a line of
+application behaviour to completion.** The first reported the CSP violation and the
+right-pane overlap. The second reported the composer label sitting on the textarea and the
+API-key modal never appearing — because `boot()` was defined and never called. The third
+was the first live execution of anything in `app.js`, and it rejected at step 1: the
+manifest declared no `permissions`, so `chrome.storage` was `undefined` and every call
+through it threw. Both are fixed and neither fix has been observed running.
 
 Every module passes `node --check`, every import and DOM id resolves, no `style` attribute
 or style assignment remains anywhere in `src/`, all 47 classes in `index.html` are defined
-in the stylesheets, `boot()` resolves to an invocation, and no top-level function in
-`app.js` is left uncalled. 102 checks run under Node against stubbed `chrome` and `fetch`
-cover the service worker's SSE handling and tool loop, the model settings, the port client,
-the search parser and HTML extraction, the `read_page` guard, the page half of a tool
-round-trip, and the agent registry.
+in the stylesheets, `boot()` resolves to an invocation, no top-level function in `app.js`
+is left uncalled, and every `chrome.<api>` used in `src/` has its permission declared or
+needs none. 105 checks run under Node against stubbed `chrome` and `fetch` cover the service
+worker's SSE handling and tool loop, the model settings, the port client, the search parser
+and HTML extraction, the `read_page` guard, the page half of a tool round-trip, the agent
+registry, and the manifest's permissions.
 
 **None of those checks executes `app.js`, and there is no DOM harness that could.** That
 is how a fully written, correct, entirely unreachable `boot()` passed every check in two
-consecutive rounds. The new uncalled-function assertion closes that one hole and nothing
-else.
+consecutive rounds, and how a manifest with no `permissions` key passed them again. The
+uncalled-function assertion and the permission sweep close those two holes and nothing
+else — both are one-shot checks against a fault that has already been fixed, not a
+standing guard.
 
 Confirmed in Chrome is presentation only: the panes render under the extension's own CSP,
-the composer takes the remaining height, the footer is not overlapped, and the label is
-clear of the textarea.
+the composer takes the remaining height, and the footer is not overlapped.
 
 Unverified is everything else — whether it boots past the gate at all, whether OpenRouter
 accepts these requests or these tool schemas, whether the streaming caret behaves over a
@@ -149,6 +157,13 @@ refuse it in the browser, which is the guard, but there is no lint step and no t
 in this repository, so the earliest that pattern is caught is a console error on a new tab.
 The rule worth writing is a discovery finding, not code.
 
+**The same is true of a manifest that drifts from the code.** The missing `permissions` key
+sat behind two full rounds of green checks because nothing in this repository reads the
+manifest from the code side. The permission sweep closes the specific case, and
+`startupFault()` now turns a repeat into a message that names the fault rather than a bare
+`TypeError` — but a *new* API used with no permission would still be caught first by
+Chrome, not by anything here.
+
 **`deepseek/deepseek-v4-flash` is unverified.** It is in the model picker exactly as the
 owner wrote it and has not been checked against OpenRouter's catalogue. If the id is wrong,
 the failure is loud and specific — the picker still offers the default and a custom field,
@@ -160,9 +175,14 @@ since there is one such folder. That file **is** committed.
 
 ## Next obvious step
 
-**Run it.** Not synthesis — synthesis is still the largest thing the product description
-promises that the extension does not do, and it is still an owner decision. But it is not
-the next step, because nothing has been *observed working*. Reload the extension and walk
-the checklist in `wiki/environments/setup.md`; the first live run is where the next defects
-will be, and they will be in code that has never executed: the service worker, the tool
-loop, the port client, and the `read_page` guard.
+**Reload the extension and walk the checklist in `wiki/environments/setup.md`.** Not
+synthesis — synthesis is still the largest thing the product description promises that the
+extension does not do, and it is still an owner decision. But it is not the next step,
+because nothing has been *observed working*.
+
+Adding the `storage` permission unblocks everything that was waiting behind it, so this is
+the run in which the application executes properly for the first time: the gate, the model
+picker, Settings, the port, the service worker, the tool loop and `read_page`. **Chrome
+re-prompts for the new permission**, and the page must be a *new* tab — reloading the
+extension card does not re-fetch anything for a new-tab page that is already open. Expect
+further defects; that is where the next ones will be.
