@@ -1,7 +1,7 @@
 ---
 name: memory-tasks-send-and-layout
 description: Record of the fifth browser run — a failed send whose reason was swallowed rather than shown, and a centre pane that held the wrong three things.
-status: in-progress
+status: done
 ---
 
 # Task — Send and layout
@@ -355,3 +355,54 @@ visible and there is a way back, so that is what the check asserts now. The code
 and the test was not.
 
 185 Node checks and all four browser suites pass.
+
+### Task 5 — `docs/send-and-layout-release`
+
+The changelog, the setup checklist, and this record closed.
+
+**Two numbers in the changelog had been wrong the same way.** It claimed 21 checks on the
+agent registry and 17 on the `data-*` names. The real figures were 13 and 13, and for the
+registry the count was not a lower number — it was an invented one, because **nothing in
+the suite touched the registry at all**. That is the same failure as the layout bug: a
+documentation claim about verification that nobody checked, sitting next to the code it
+describes. It is now 185 checks with every figure measured from a full run.
+
+**The checklist had to be rewritten, not appended to.** Steps 2, 6 and 10 told the reader to
+watch four agents appear in a list and to read `· search_web(…)` in a log — none of which
+exists any more. A checklist that describes removed UI is worse than no checklist, because
+a reader following it concludes the product is broken. Step 12 is new and covers the key
+modal, ending on the one failure that matters: *if the mask ever shows anything other than
+dots, stop and say so.*
+
+**What the record is for.** Three of the four reported items turned out not to be faults —
+the send chain was wired correctly, the transcript was rendering into the wrong `<section>`
+rather than mis-rendering, and the status row was new wiring rather than a repair. A record
+written after the fix would have quietly presented the report as correct, which is why this
+file was created before any code changed.
+
+#### Final verification
+
+| Harness | Checks | Result |
+|---|---|---|
+| `/tmp/wt/*.test.mjs` | 185 | all passing |
+| `/tmp/pw/runtime2.js` | 19 | all passing |
+| `/tmp/pw/send.js` success / 401 / empty | 3 modes | all passing |
+| `/tmp/pw/layout.js` | 24 | all passing |
+| `/tmp/pw/apikey.js` | 39 | all passing |
+
+Every new static file was also run against the tree before its fix and observed failing:
+`senderror` 5/5 fixed vs 2 pre-fix, `centrepane` 11/11 vs 5, `statusrow` 12/12 vs 1,
+`apikey` 15/15 vs 2.
+
+## Still true at the end of this task
+
+* **No live OpenRouter call has ever been made.** The send path is executed against a
+  stub, which is a step past the last three releases and is not the same as a real answer.
+  Everything past the first answer — the tool loop against OpenRouter's schemas, sub-agent
+  fan-out, the streaming caret over a live stream — remains unobserved.
+* **Three findings are reported, not applied.** Two to the shared set and one local, per
+  `discovery_protocol`: a session that could not load the shared tools concluded the set
+  was unavailable, because `auto_activation` and `mcp_connector` give contradictory
+  instructions for exactly that client.
+* **The version is still `0.1.0`.** Every item here is user-visible and a bump is the
+  owner's call.

@@ -117,10 +117,14 @@ never been run by anyone. Expect to find things that are not in here.
    > identical-looking page. The checks that prove the app is alive are the ones after
    > this: a chat in the history list, and a **Send** button that disables itself.
 2. **Send something.** Type a short prompt, press **Send**. The chat is titled from the
-   first line, the prompt appears in the left pane, and then **the answer should start
-   arriving word by word** with a blinking caret. The button says *Waiting…* and is
-   disabled until it finishes. If nothing arrives after a few seconds, open DevTools —
-   the worker logs the reason.
+   first line, your prompt appears in the **centre** pane on the **right**, and then **the
+   answer should start arriving word by word** on the left with a blinking caret. The
+   button says *Waiting…* and is disabled until it finishes.
+   **Above the conversation, one status line updates in place** — `Working…`, then
+   `Writing…` as the first token lands, then `Answer ready`. It is a single row: it changes
+   its text and never grows a line, so there is no log to scroll and nothing to read back.
+   If nothing arrives after a few seconds, open DevTools — the worker logs the reason, and
+   the status line says *Failed*.
 3. **The answer is saved.** Reload the page. The prompt and the full answer are both still
    there.
 4. **Change the model.** Pick the second entry in the dropdown; the hint under it should
@@ -130,24 +134,33 @@ never been run by anyone. Expect to find things that are not in here.
 5. **Turn multi-agent on.** The pill goes from red **OFF** to green **ON**, and the max
    agents field becomes editable. Clear it and press Tab — it should snap to `1`, not stay
    empty. Set it to 3 and send again.
-6. **Watch the centre pane.** Four agents appear — the Main Agent plus three sub-agents —
-   each logging as it works, and **each disappearing as it finishes**. The count badge falls
-   to zero. When the agent you have selected finishes, the pane should fall back to another
-   running agent rather than going blank. **Sub-agent answers appear in the log only** —
-   the transcript holds the main agent's answer, and nothing else.
+6. **Watch the status line.** With multi-agent on, the count in the status row rises to
+   four — the Main Agent plus three sub-agents — reads `Working… · 4 running`, and **falls
+   to zero as each one finishes**. It is one row, not a list: agents do not appear as
+   entries and there is no per-agent log to scroll. **Sub-agent answers are not shown at
+   all** — the transcript holds the main agent's answer and nothing else.
 7. **Rename the chat.** Edit the title field; "Saved" flashes and the history list updates.
 8. **New chat, then switch between them.** Chats persist across a reload.
 9. **Drop a file on the dropzone.** It is listed. It is *not* attached to anything yet.
 10. **Make it look something up.** Ask a question a stored answer does not cover —
-    "what is the latest stable version of X" or "find me an article about Y". The centre
-    pane should log `· search_web(...)` and then `· read_page(...)` while it works, and the
-    answer should come back **naming where it got the facts**. Partial JSON in the
+    "what is the latest stable version of X" or "find me an article about Y". The status
+    line should read **Searching…** and then **Reading…** while it works, and the answer
+    should come back **naming where it got the facts**. Partial JSON in the
     transcript or a raw tool argument as visible text means the streaming assembly is
     broken.
 11. **Watch it rename the chat.** In the same answer, the title should change by itself,
     once, to something that names the subject rather than repeating your question. The
     history list should update to match.
-12. **Read the system instructions.** Open DevTools on the new-tab page:
+12. **Replace the key.** Open **Settings**. The field is `readonly` and shows a masked
+    value — **`sk-or-v1-••••…`, never the real key** — with an **Edit** button beside it
+    and **Update key** greyed out. Press **Edit**: the field empties, becomes editable, and
+    Update key turns on. Now press **Cancel** and reopen Settings — the mask is back, and
+    your old key still works, because Cancel writes nothing. Press **Edit**, paste a new
+    key, press **Update key**, and send something: the new key is the one being used.
+    *If the mask ever shows something other than dots, or if Cancel changed your key, stop
+    and say so — that is a credential leak and it is the one thing on this page that is not
+    a cosmetic fault.*
+13. **Read the system instructions.** Open DevTools on the new-tab page:
     ```js
     const { get } = await import('./lib/instructions.js');
     (await get()).slice(0, 80);   // the Main Agent's operating manual
@@ -157,7 +170,8 @@ never been run by anyone. Expect to find things that are not in here.
 
 ### If a send fails
 
-The reason appears under the Send button and in the agent log. The common ones:
+The reason appears under the Send button, and the status line above the conversation says
+*Failed*. The common ones:
 
 | Message | What it means |
 |---|---|
