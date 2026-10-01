@@ -7,6 +7,7 @@
 
 import * as agents from './agents.js';
 import * as sessions from './sessions.js';
+import { MODEL_PRESETS, effectiveModel } from './storage.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -35,6 +36,14 @@ function text(str) {
 // ---------------------------------------------------------------------------
 // Left pane — history and transcript
 // ---------------------------------------------------------------------------
+
+/**
+ * The message currently being written, or null.
+ *
+ * A streaming answer is not in the database yet, so it exists only in the DOM. Anything
+ * that repaints the transcript has to carry it across.
+ */
+let stream = null;
 
 /** Redraws the history list from the database. */
 export async function renderHistory() {
@@ -93,19 +102,98 @@ export async function renderTranscript() {
     return;
   }
 
-  render(
-    pane,
-    ...messages.map((m) =>
-      el(
-        'div',
-        { className: `msg${m.role === 'user' ? ' msg--user' : ''}` },
-        el('span', { className: 'msg__role', textContent: m.role }),
-        el('div', { className: 'msg__body' }, text(m.content)),
-      ),
+  // A response can be arriving while the transcript is repainted for another reason — a
+  // rename, a session switch. The in-flight node is not in the database yet, so it has to
+  // be carried across the redraw or the text the user is watching vanishes mid-answer.
+  //
+  // Captured before the rebuild, because `render` detaches everything, and re-checked
+  // against the current value afterwards: if the answer completed while this repaint was
+  // waiting on the database, the stored copy is now in `nodes` and re-appending the
+  // streamed one would show the same answer twice.
+  const live = stream;
+
+  const nodes = messages.map((m) =>
+    el(
+      'div',
+      { className: `msg${m.role === 'user' ? ' msg--user' : ''}` },
+      el('span', { className: 'msg__role', textContent: m.role }),
+      el('div', { className: 'msg__body' }, text(m.content)),
     ),
   );
 
+  render(pane, ...nodes);
+
+  if (live && live === stream) pane.append(live);
+
   pane.scrollTop = pane.scrollHeight;
+}
+
+// ---------------------------------------------------------------------------
+// Left pane — streaming
+// ---------------------------------------------------------------------------
+
+/**
+ * Opens a streaming assistant message and returns a handle for `pushDelta`.
+ *
+ * An empty placeholder is appended immediately so the first chunk has somewhere to land;
+ * an answer that takes a moment to start would otherwise look like nothing happened.
+ */
+export function startStream() {
+  const pane = $('transcript');
+  $('transcript-empty')?.remove();
+
+  const body = el('div', { className: 'msg__body' });
+  stream = el(
+    'div',
+    { className: 'msg msg--streaming' },
+    el('span', { className: 'msg__role', textContent: 'assistant' }),
+    body,
+  );
+
+  pane.append(stream);
+  pane.scrollTop = pane.scrollHeight;
+
+  return { body };
+}
+
+/** Appends one chunk. Text nodes throughout, so streamed content is never parsed as HTML. */
+export function pushDelta(handle, chunk) {
+  if (!handle || !chunk) return;
+  handle.body.append(text(chunk));
+
+  const pane = $('transcript');
+  // Only follow the stream if the reader has not scrolled up to read something.
+  const atBottom = pane.scrollHeight - pane.scrollTop - pane.clientHeight < 48;
+  if (atBottom) pane.scrollTop = pane.scrollHeight;
+}
+
+/**
+ * Closes the streaming message without removing it — the streaming caret goes, whatever
+ * arrived stays, so a partial answer is still readable after a failure.
+ *
+ * A message that never received any text is removed rather than left as an empty bubble:
+ * an answer that failed before its first chunk should not look like an answer.
+ */
+export function endStream() {
+  const node = stream;
+  stream = null;
+  if (!node) return;
+
+  node.classList.remove('msg--streaming');
+  if (!node.querySelector('.msg__body').textContent) node.remove();
+}
+
+/**
+ * Drops the streaming node entirely because its text is about to be stored.
+ *
+ * Called **before** the write, not after. The write repaints the transcript from the
+ * database, so clearing the reference first is what guarantees that repaint sees no
+ * streaming node and cannot show the same answer twice.
+ */
+export function discardStream() {
+  const node = stream;
+  stream = null;
+  node?.remove();
 }
 
 /** Writes the open session's title into the title input. */
@@ -215,4 +303,63 @@ export function renderMultiAgent({ multiAgentOn, agentLimit }) {
   count.disabled = !multiAgentOn;
   count.value = String(agentLimit);
   count.setAttribute('min', '1');
+}
+
+// ---------------------------------------------------------------------------
+// Right pane — model picker
+// ---------------------------------------------------------------------------
+
+/**
+ * Paints the model dropdown and the custom-id field.
+ *
+ * The hint names the model that will actually be sent, because the two controls do not
+ * look like they interact: someone who typed a custom id has no other way to tell whether
+ * the dropdown still counts.
+ */
+export function renderModel(settings) {
+  const select = $('model-select');
+  const custom = $('model-custom');
+  const hint = $('model-effective-hint');
+
+  render(
+    select,
+    ...MODEL_PRESETS.map((id) =>
+      el('option', { value: id, textContent: id, selected: id === settings.model }),
+    ),
+  );
+
+  // A stored id that is no longer a preset still has to be shown, or the select would
+  // silently fall back to the first option and send something the user did not pick.
+  if (settings.model && !MODEL_PRESETS.includes(settings.model)) {
+    select.append(el('option', { value: settings.model, textContent: settings.model, selected: true }));
+  }
+
+  custom.value = settings.customModel ?? '';
+
+  const effective = effectiveModel(settings);
+  hint.textContent = settings.customModel
+    ? `Sending “${effective}” — the custom id overrides the dropdown.`
+    : `Sending “${effective}”.`;
+}
+
+// ---------------------------------------------------------------------------
+// Right pane — send state
+// ---------------------------------------------------------------------------
+
+/**
+ * Locks the composer while a request is in flight.
+ *
+ * A second send would open a second stream into the same transcript, interleaving two
+ * answers into one message. Disabling the button is the honest version of that: the input
+ * is still there and the send state is visible.
+ */
+export function renderSendState({ busy, note = '' }) {
+  const send = $('send-btn');
+  send.disabled = busy;
+  send.textContent = busy ? 'Waiting…' : 'Send';
+
+  const status = $('send-status');
+  if (!status) return;
+  status.textContent = note;
+  status.hidden = !note;
 }

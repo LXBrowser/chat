@@ -206,6 +206,27 @@ h1, h2, h3, h4 {
   overflow-wrap: anywhere;
 }
 
+/* A response arriving token by token. The caret is drawn on the message rather than
+   inside the text, so it never becomes part of the saved content. */
+.msg--streaming .msg__body::after {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--accent);
+  animation: msg-caret 1s steps(2, start) infinite;
+}
+
+@keyframes msg-caret {
+  50% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .msg--streaming .msg__body::after { animation: none; }
+}
+
 /* --- Agent log stream (centre pane) ------------------------------------- */
 
 .log {
@@ -339,6 +360,42 @@ h1, h2, h3, h4 {
   background: var(--surface-solid);
   color: var(--ink-900);
   font: inherit;
+}
+
+/* --- Model picker -------------------------------------------------------- */
+
+.model {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: none;
+}
+
+.model__select,
+.model__custom {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--surface-solid);
+  color: var(--ink-900);
+  font: inherit;
+}
+
+.model__custom {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+/* --- Send state ---------------------------------------------------------- */
+
+.send-status {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--ink-400);
+  overflow-wrap: anywhere;
 }
 
 /* --- Empty states -------------------------------------------------------- */

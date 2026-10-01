@@ -6,6 +6,15 @@
 
   "minimum_chrome_version": "116",
 
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+
+  "host_permissions": [
+    "https://openrouter.ai/*"
+  ],
+
   "chrome_url_overrides": {
     "newtab": "src/ui/index.html"
   },

@@ -14,8 +14,9 @@ tab with a three-floating-pane interface. Vanilla HTML/CSS/ES6+ modules, no buil
 dependencies. IndexedDB holds chat history and agent settings. Model access goes through
 OpenRouter.
 
-At version `0.1.0` it is a **shell**: the manifest, the database layer, and the UI layout
-exist. Agent orchestration, the OpenRouter client, and the search tool do not.
+At version `0.1.0` the chat surface works end to end: prompts go to OpenRouter, answers
+stream back, and both are stored. The search-and-read tool and any synthesis across
+sub-agents do not exist.
 
 ## Layout
 
@@ -25,6 +26,8 @@ LICENSE                MIT, © 2026 LXBrowser
 README.md              Overview only.
 manifest.json          MV3 manifest. New tab → src/ui/index.html.
 src/
+  background.js        The service worker. Every OpenRouter call,
+                       and the only place the API key is read.
   db.js                IndexedDB wrapper. Three object stores, promisified.
   ui/
     index.html         The three panes, the key modal, the settings surface.
@@ -36,6 +39,8 @@ src/
       sessions.js      The only module that touches the database.
       views.js         All DOM rendering. No state of its own.
       api-key.js       The blocking key gate.
+      openrouter.js    Port client for the service worker.
+                       Never sees the API key.
     icons/             Extension icon, referenced from the manifest.
     css/
       tokens.css       Design tokens, lifted verbatim from the design system.
@@ -58,6 +63,7 @@ wiki/                  Human-facing documentation. No frontmatter.
 | What | Where |
 |---|---|
 | The running page | `src/ui/index.html`, reached only through the new-tab override |
+| Model calls | `src/background.js` — the page cannot call OpenRouter at all |
 | Database layer | `src/db.js` — every page imports it, nothing else opens a store |
 | Manifest | `manifest.json` — Chrome loads this from the repository root |
 | Instruction routing | `AGENTS.md` → `.agents/index/root-index.md` |
@@ -90,8 +96,13 @@ the snippet is in
   origin. Always load unpacked and use the new tab.
 * **The `chat_messages.session_id` constraint is not in the schema.** IndexedDB has no
   foreign keys; the wrapper checks. Calling a store directly bypasses it.
-* **The manifest has no permissions yet.** That is deliberate for `0.1.0` — the background
-  fetcher that needs `host_permissions` has not been written.
+* **The manifest has exactly one host permission**, `https://openrouter.ai/*`. The
+  search-and-read tool will add its own; nothing has been pre-declared for it.
+* **The service worker is terminated when idle**, which is what closes the page's port.
+  The client reconnects on the next request, so this is invisible except that a request
+  already in flight is lost.
+* **A single request is capped at about five minutes** by Chrome, however active the port
+  is. A very long answer ends as an error rather than a completion.
 
 ## The shared set
 

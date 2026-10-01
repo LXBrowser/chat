@@ -15,6 +15,9 @@ There is nothing to install and nothing to build. The repository is loaded unpac
 4. Select the **repository root** — the directory containing `manifest.json`, not `src/`.
 5. Confirm the extension appears in the list as `@lxbrowser/chat` with no errors.
 
+The manifest now declares `host_permissions: ["https://openrouter.ai/*"]`. Chrome shows a
+permission warning on the card — that is expected, and it is the only permission.
+
 ## Open it
 
 Open a **new tab**. The extension overrides the new tab page, so the three panes load in
@@ -38,20 +41,45 @@ extension card at `chrome://extensions` after every change, then reopen the new 
 
 The extension has never been run in CI, so this is a manual pass. Work down it.
 
+**This costs money.** Every prompt is a billable OpenRouter call, and step 5 is five of
+them. Point the model at something cheap before you start.
+
 1. **Load unpacked.** Open a new tab. A modal blocks the app asking for an OpenRouter
    key — nothing else is usable until you provide one.
-2. **Send something.** Type a prompt, press **Send**. It appears in the left pane, and the
-   chat is titled from the first line rather than staying "New Chat".
-3. **Turn multi-agent on.** The pill goes from red **OFF** to green **ON**, and the max
+2. **Send something.** Type a short prompt, press **Send**. The chat is titled from the
+   first line, the prompt appears in the left pane, and then **the answer should start
+   arriving word by word** with a blinking caret. The button says *Waiting…* and is
+   disabled until it finishes. If nothing arrives after a few seconds, open DevTools —
+   the worker logs the reason.
+3. **The answer is saved.** Reload the page. The prompt and the full answer are both still
+   there.
+4. **Change the model.** Pick the second entry in the dropdown; the hint under it should
+   change to that id. Type `anthropic/claude-sonnet-5` in the custom box; the hint should
+   say the custom id overrides the dropdown. Clear it and the dropdown takes over again.
+   Send, and confirm the answer changes.
+5. **Turn multi-agent on.** The pill goes from red **OFF** to green **ON**, and the max
    agents field becomes editable. Clear it and press Tab — it should snap to `1`, not stay
-   empty.
-4. **Send again with the cap at 3.** Three agents appear in the centre dropdown, log as
-   they work, and **each disappears as it finishes**. Watch one: when the one you have
-   selected finishes, the pane should fall back to another running agent rather than going
-   blank.
-5. **Rename the chat.** Edit the title field; "Saved" flashes and the history list updates.
-6. **New chat, then switch between them.** Reload the page — the chats are still there.
-7. **Drop a file on the dropzone.** It is listed. It is *not* attached to anything yet.
+   empty. Set it to 3 and send again.
+6. **Watch the centre pane.** Four agents appear — the Main Agent plus three sub-agents —
+   each logging as it works, and **each disappearing as it finishes**. The count badge falls
+   to zero. When the agent you have selected finishes, the pane should fall back to another
+   running agent rather than going blank. **Sub-agent answers appear in the log only** —
+   the transcript holds the main agent's answer, and nothing else.
+7. **Rename the chat.** Edit the title field; "Saved" flashes and the history list updates.
+8. **New chat, then switch between them.** Chats persist across a reload.
+9. **Drop a file on the dropzone.** It is listed. It is *not* attached to anything yet.
+
+### If a send fails
+
+The reason appears under the Send button and in the agent log. The common ones:
+
+| Message | What it means |
+|---|---|
+| `OpenRouter returned 401` | The key is wrong, revoked, or expired. Replace it in Settings. |
+| `OpenRouter returned 402` | No credit left on the account. |
+| `OpenRouter returned 400` with a model error | The model id is wrong. Type a different one in the custom box. |
+| `No OpenRouter key is stored` | Should be impossible — the modal blocks first. Reopen Settings and save the key again. |
+| `The background worker went away` | The service worker was terminated mid-request. Send again. |
 
 ## Verifying the database layer
 

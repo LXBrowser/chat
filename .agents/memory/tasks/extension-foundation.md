@@ -1,6 +1,6 @@
 ---
 name: memory-tasks-extension-foundation
-description: Record of the design-system scatter and the MV3 extension shell — the task table plus a per-task entry appended as each branch lands.
+description: Record of the design-system scatter and the MV3 extension build — the task table plus a per-task entry appended as each branch lands.
 ---
 
 # Task — extension foundation
@@ -20,7 +20,8 @@ stack and are pushed; no pull request without an explicit yes.
 | 1 | Plan record | This file, written before the work | LXBrowser/chat | `docs/agents-setup` | `.agents/memory/tasks/` | |
 | 2 | Design system | Scatter `DESIGN.md` one subject per file | LXBrowser/chat | `docs/design-system` | `.agents/design/`, `.agents/index/` | |
 | 3 | Extension shell | Manifest, database layer, three-pane UI | LXBrowser/chat | `feat/chat-extension` | `manifest.json`, `src/` | |
-| 4 | Core UI logic | API-key gate, multi-agent toggle, agent dropdown, history | LXBrowser/chat | `feat/chat-logic` | `src/ui/app.js`, `src/ui/lib/` | |
+| 4 | Core UI logic | API-key gate, multi-agent toggle, agent dropdown, history | LXBrowser/chat | `feat/chat-logic` | `src/ui/app.js`, `src/ui/lib/` | #4 |
+| 5 | Model layer | Service worker, streamed OpenRouter calls, real sub-agents | LXBrowser/chat | `feat/openrouter-integration` | `src/background.js`, `src/ui/lib/openrouter.js` | |
 
 The `PR` column stays empty until every branch is pushed. Filling it back afterwards would
 leave the earlier pull requests behind and force a rebase of the whole stack.
@@ -167,3 +168,79 @@ OpenRouter round-trip replaces — swap its body for a fetch and the dropdown be
 unchanged. `api-key.js` already stores to `chrome.storage.local` under
 `openrouter_api_key`; the model client reads that same key. `views.renderTitle()` reads
 through `sessions.getCurrent()`, so a rename shows without a reload.
+
+### Task 5 — `feat/openrouter-integration`
+
+The model layer. Task 4 left the interface working over no model; this makes the Main
+Agent real and gives sub-agents real round-trips.
+
+**Owner decisions taken before the work,** each of which changed the code:
+
+* **Streaming, not one-shot** — SSE relayed to the page over a long-lived port, so the
+  answer appears as it is generated.
+* **Default model `openai/gpt-4o-mini`**, with a dropdown of two presets and a custom-id
+  text field that overrides the dropdown.
+* **Sub-agents real, no synthesis** — every spawned sub-agent makes its own OpenRouter
+  call. Their answers are logged in the centre pane and deliberately *not* written to
+  `chat_messages`: there is no `subagent` role in the schema, and N extra answers per send
+  would read as a bug in the transcript.
+
+**The key never enters the page.** `src/background.js` reads `openrouter_api_key` from
+storage in the worker's own context and puts it in the `Authorization` header. It is never
+posted over the port, so it cannot reach the DOM, a devtools dump, or an error message.
+This is the actual reason the service worker exists — it was not written earlier because
+nothing was cross-origin until now.
+
+**Why a port and not `sendMessage`.** `sendMessage` resolves once, at the end; it cannot
+carry a stream. Requests are keyed by `requestId` because the Main Agent and every
+sub-agent are in flight simultaneously.
+
+**The one-terminal-message rule.** `delta` may arrive any number of times, but exactly one
+of `done` or `error` always arrives last. Without that, the page has no way to know when to
+remove an agent from the dropdown, and the auto-remove contract from task 4 quietly breaks.
+
+**Send is guarded while in flight.** A second click would stream two answers into the same
+transcript. The lock is released in a `finally`, so a failure cannot leave the composer
+disabled.
+
+**`host_permissions: ["https://openrouter.ai/*"]`** — the first permission in the manifest,
+and the smallest thing the model layer needs. No `activeTab`, no `tabs`, no `<all_urls>`.
+
+**Two bugs found by the tests, both before commit.**
+
+`MODEL_PRESETS` was declared *after* `DEFAULT_SETTINGS`, which reads it. That is a temporal
+dead zone error on load — the extension would have thrown on every page open, and nothing
+short of running it would have said so.
+
+The error note under the send button was repainted away by the `finally` that clears the
+busy state, so a failure message would have been visible for zero frames. The note is now
+held outside the request.
+
+Also fixed: an empty model answer was checked *after* `agents.finish()`, which would have
+found the agent already out of the active list and logged nothing.
+
+**Verified.** 37 checks across three scripts run under Node against stubbed `chrome` and
+`fetch`: 15 on the service worker's SSE handling (mid-JSON frame splits, role-only frames,
+unparseable frames, `[DONE]`, exactly-one-terminal, error status passthrough, abort on
+disconnect, and two assertions that the key never appears in anything the worker posts);
+11 on the model settings (preset defaults, custom override, whitespace handling, malformed
+stored values); 11 on the port client (delta accumulation, request demultiplexing, reconnect
+after disconnect, dead-port rejection). Every module passes `node --check`; every import and
+`getElementById` target resolves.
+
+**Not verified.** The streaming DOM path — caret, live append, scroll-follow — and the real
+OpenRouter round-trip. No Chrome in this environment. The check is written up in
+`wiki/environments/setup.md`.
+
+As before, the scripts were run from `/tmp` and **not committed**; the repository has no
+test runner and adding one was not in scope.
+
+**Known limits carried forward.** Chrome caps a single request at roughly five minutes, so
+a very long answer is cut mid-stream and arrives as an error rather than a completion. The
+worker is terminated when idle, and a termination mid-stream loses that request — the port
+reconnects on the next send.
+
+**What the next task now depends on.** `agents.spawn`/`finish`/`fail` and the port protocol
+are the two seams the search tool extends: the search tool is another `type: 'chat'`
+variant from the page and another branch in the worker, not a new mechanism. The Main
+Agent's system prompt is the place a tool-use instruction goes.

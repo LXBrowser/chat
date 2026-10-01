@@ -138,6 +138,16 @@
         Sub-agents run concurrently, up to this cap.
       </p>
 
+      <!-- Model picker. The custom field overrides the dropdown when it has a value. -->
+      <div class="model">
+        <label class="eyebrow" for="model-select" style="margin:0">Model</label>
+        <select class="model__select" id="model-select" aria-describedby="model-effective-hint"></select>
+        <input class="model__custom" id="model-custom" type="text" spellcheck="false"
+               autocomplete="off" placeholder="Custom model id (optional)"
+               aria-label="Custom model id">
+        <p class="lead" id="model-effective-hint" style="font-size:12px;margin:0"></p>
+      </div>
+
       <!-- File import + drag and drop. -->
       <div class="dropzone" id="dropzone" tabindex="0" role="button"
            aria-label="Add files by clicking to browse, or by dropping them here">
@@ -163,6 +173,7 @@
         Send
       </button>
       <button class="btn" type="button" data-action="clear-composer">Clear</button>
+      <span class="send-status" id="send-status" role="status" hidden></span>
     </footer>
 
   </section>
@@ -171,12 +182,13 @@
 
 <!-- ══════════════════════════════════════════════════════════════════════
      app.js owns the wiring: the API-key gate, settings, the database
-     connection, and every listener. The data lives in ./lib/ — sessions
-     owns the database, agents owns the registry, views owns the DOM.
+     connection, the agent run, and every listener. The data lives in
+     ./lib/ — sessions owns the database, agents owns the registry, views
+     owns the DOM, openrouter talks to the service worker.
 
-     No service worker yet. Nothing here is cross-origin, so there is
-     nothing for one to do; it arrives with the search tool, which is
-     what actually needs host_permissions.
+     OpenRouter is called from src/background.js, not from this page. The
+     API key is read by the worker and never travels over the port, so it
+     cannot reach this document.
 
      The database layer is src/db.js — one directory up from this page, so
      the console import path is '../db.js'.
