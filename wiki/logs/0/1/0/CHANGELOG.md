@@ -51,35 +51,59 @@ interface renders, but nothing behind it is wired yet.
   nor the extension can drift from the other.
 * `src/ui/icons/icon-128.png` — generated icon.
 
+### Core UI logic
+
+* `src/ui/app.js` — the wiring: boot order, then listeners. It connects the modules and
+  owns no state of its own.
+* `src/ui/lib/storage.js` — `chrome.storage.local`, for the API key and UI settings.
+  `sync` was rejected: it uploads to Google's servers, which is wrong for a credential.
+* `src/ui/lib/agents.js` — the agent registry. `list()` returns only agents still running,
+  so an agent leaving the dropdown is a property of the registry rather than a step the UI
+  has to remember.
+* `src/ui/lib/sessions.js` — the only module that touches the database.
+* `src/ui/lib/views.js` — all DOM rendering.
+* `src/ui/lib/api-key.js` — the blocking key gate.
+
+No service worker. Nothing here is cross-origin, so there is nothing for one to do; it
+arrives with the search tool, which is what brings `host_permissions`.
+
 ### Memory
 
 * `.agents/memory/state/repository-state.md` — what exists, what does not, and the next
   obvious step.
 * `.agents/memory/tasks/agents-setup.md` — record of this scaffold.
-* `.agents/memory/tasks/extension-foundation.md` — record of the design-system scatter and
-  the extension shell.
+* `.agents/memory/tasks/extension-foundation.md` — record of the design-system scatter, the
+  extension shell, and the core UI logic.
 
 ## Not in this release
 
-Stated plainly so nobody mistakes the interface for a working product:
+**A working interface over no model.** Stated plainly so nobody mistakes it for the
+product:
 
-* `app.js` and `background.js` do not exist, so **every control on the page is inert**.
-* No OpenRouter client, no streaming, no API-key handling — the blocking modal is markup
-  only.
-* No agent orchestration: no spawn, no monitor, no synthesis, no dropdown auto-remove.
-* No search tool, no background fetcher, no HTML scraping.
-* No file import, no drag-and-drop wiring.
-
-Every control for the above exists in the markup and does nothing.
+* **No OpenRouter client.** The key is stored and gated, but nothing calls the API, so a
+  sent prompt is never answered.
+* **No streaming, no synthesis.**
+* **No real sub-agents.** `agents.simulate()` emits canned steps on a timer. It is the seam
+  a real round-trip replaces.
+* **No search tool**, no background fetcher, no HTML scraping.
+* **No `background.js`.**
+* **File attachments are listed, not read** — files appear in the dropzone but are never
+  attached to a message.
 
 ## Unverified
 
 **This extension has never been loaded in a browser.** It was authored in an environment
-with no Chrome. The manifest parses and `db.js` passes a syntax check, but the page has not
-rendered and the database layer has not been exercised at runtime.
+with no Chrome.
 
-The procedure is in [Setup](../../../../environments/setup.md) — load unpacked, check the
-panes render, then run the `db.js` round-trip and its two negative paths from the console.
+Verified: every module passes `node --check`; every import and every DOM id target
+resolves; the agent registry was exercised directly under Node against the auto-remove
+contract (21 checks — spawn, finish, idempotent re-finish, failure, log survival,
+subscription and unsubscribe, and `simulate` reaching both completion and failure); limit
+validation across 11 cases.
+
+Not verified: the DOM path — `app.js` boot order, the modal, and the panes rendering.
+
+The procedure is in [Setup](../../../../environments/setup.md).
 
 ## Notes
 
