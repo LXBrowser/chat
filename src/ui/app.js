@@ -6,8 +6,13 @@
  *   1. the API-key gate resolves first, so the interface is never usable without a key
  *   2. settings load, then the multi-agent toggle and model picker are painted before
  *      they are wired
- *   3. the database opens and the history list is populated
- *   4. every control gets its listener
+ *   3. the agent instructions are read
+ *   4. the database opens and the history list is populated
+ *   5. every control gets its listener
+ *
+ * Those numbers are not decoration: a failure in any of them is reported to the owner as
+ * `Startup failed at <n> · <name>`, so this list and the step labels in `boot()` have to
+ * stay in step with each other.
  *
  * Modules own their own data: `sessions` owns the database, `agents` owns the agent
  * registry, `views` owns the DOM, `openrouter` owns the port to the service worker. This
@@ -87,33 +92,72 @@ const SUBAGENT_SYSTEM =
 // Boot
 // ---------------------------------------------------------------------------
 
+/**
+ * The boot step that failed, or null while boot is healthy.
+ *
+ * Held at module scope because the report is written by the caller: `boot()` rejects, and
+ * the handler that turns that into something readable lives outside it. A step name is
+ * what turns "Cannot read properties of undefined" into an address — without it, the only
+ * honest thing the page can say is the message, and the message does not say where.
+ */
+let failedStep = null;
+
+/**
+ * Runs one numbered step of `boot()`, recording its name if it throws.
+ *
+ * The step is named, not just numbered, because the number alone sends the reader back to
+ * the boot comment to find out what it was. The tag is attached to the original error and
+ * rethrown unchanged, so a `catch` further down still sees the same `err.message` it would
+ * have seen without this.
+ */
+async function step(label, fn) {
+  try {
+    return await fn();
+  } catch (err) {
+    failedStep = label;
+    throw err;
+  }
+}
+
 async function boot() {
   // 1. Gate. Nothing below runs without a key, so nothing below can be half-wired
   //    when the user has not configured anything yet.
+  //
+  //    Deliberately not wrapped in `step()`. Cancelling the gate is a decision, not a
+  //    fault, and the message for it is the gate's own — tagging it "step 1 failed"
+  //    would tell the owner their browser is broken when they simply said no.
   await apiKey.requireApiKey();
 
   // 2. Settings.
-  settings = await storage.getSettings();
-  views.renderMultiAgent(settings);
-  views.renderModel(settings);
-  views.renderSendState({ busy });
+  await step('2 · settings', async () => {
+    settings = await storage.getSettings();
+    views.renderMultiAgent(settings);
+    views.renderModel(settings);
+    views.renderSendState({ busy });
+  });
 
   // 3. Instructions. Seeded here rather than on the first send, so `agent_instructions`
   //    is populated on first run and a seeding problem surfaces at boot where it can be
   //    seen, instead of failing in the middle of a conversation.
-  systemPrompt = await instructions.get();
+  await step('3 · instructions', async () => {
+    systemPrompt = await instructions.get();
+  });
 
   // 4. Database. A first run has no sessions, so one is created rather than showing
   //    an empty pane the user has no obvious way out of.
-  await sessions.openMostRecentOrCreate();
-  await refreshConversation();
+  await step('4 · history', async () => {
+    await sessions.openMostRecentOrCreate();
+    await refreshConversation();
+  });
 
   // 5. Wiring.
-  wireConversation();
-  wireAgents();
-  wireComposer();
-  wireMultiAgent();
-  wireModel();
+  await step('5 · controls', async () => {
+    wireConversation();
+    wireAgents();
+    wireComposer();
+    wireMultiAgent();
+    wireModel();
+  });
 
   // The registry is the source of truth for the dropdown, so one subscription drives
   // both the list and the log — there is no separate "agent finished" path to forget.
@@ -609,7 +653,11 @@ if (fault) {
   boot().catch((err) => {
     const status = $('send-status');
     status.hidden = false;
-    status.textContent = err.message;
+    // The step name first, because it is the part that says where to look. The message
+    // alone is the part that was already on screen and was not enough to act on.
+    status.textContent = failedStep
+      ? `Startup failed at ${failedStep}: ${err.message}`
+      : err.message;
 
     document.querySelector('[data-action="open-settings"]').addEventListener(
       'click',

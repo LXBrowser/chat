@@ -157,3 +157,23 @@ and fails on a deliberate one-sided rename.
 
 **The check is not committed**, like every other check here: the repository has no package
 manager, no build step and no runner, and this one needs a live DOM to mean anything.
+
+### Task 3 — `fix/boot-step-reporting`
+
+A boot failure is now shown as `Startup failed at 4 · history: <message>`, not as the bare
+message. `boot()` keeps its order exactly as it was — the gate still resolves first and the
+listeners are still wired last, because that sequence is what makes a cancelled gate
+recoverable and a half-wired page impossible.
+
+**The gate is deliberately not a numbered step.** Cancelling the API-key modal is a
+decision, not a fault; tagging it "step 1 failed" would tell the owner their browser is
+broken when they said no. So it stays outside `step()` and its own message still surfaces.
+
+The step name leads the message and the original `err.message` is still there after it — the
+name says where to look, the message says what happened, and neither alone was enough.
+
+**Proven by breaking each step in turn**, in a throwaway copy of the tree staged under
+`/tmp` and deleted after: all four report the right step, a healthy boot stays silent, and
+no case blames the gate. A second check, `/tmp/wt/bootsteps.test.mjs`, 11 assertions, keeps
+the header's load-order list and the step labels from drifting apart — which they had
+already done once, before the numbers meant anything.
