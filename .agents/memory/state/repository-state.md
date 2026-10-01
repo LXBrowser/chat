@@ -59,6 +59,9 @@ models.
 
 ## What works today
 
+**Intended, and not yet confirmed in a browser** — see *What has not been verified* below.
+These were verified under Node against stubs, which is not the same claim.
+
 * Load unpacked; the API-key modal blocks until a key is stored.
 * New chat, open chat, delete chat, rename chat — all against IndexedDB.
 * **Send a prompt and get a streamed answer**, token by token, in the left pane. The
@@ -92,16 +95,22 @@ models.
 
 ## What has not been verified
 
-**The extension has never been loaded in a browser.** There is no Chrome in the authoring
-environment. Every module passes `node --check`, every import and DOM id resolves, and 102
-checks run under Node against stubbed `chrome` and `fetch` cover the service worker's SSE
-handling and tool loop, the model settings, the port client, the search parser and HTML
-extraction, the `read_page` guard, the page half of a tool round-trip, and the agent
-registry.
+**The extension has been loaded in Chrome once — and that run failed immediately.** The
+owner loaded it unpacked and the new tab reported a Content Security Policy violation:
+`manifest.json`'s `style-src 'self'` forbids the ten `style="…"` attributes in
+`src/ui/index.html`, so the page's own styles were never applied. The same run showed the
+right pane overlapping its footer, for the reason recorded in task 7. **Both were open at
+the time this was written** and are the whole of task 7.
 
-But the DOM path and the real network round-trip are untested: `app.js` boot order, the
-modal, the panes rendering, the streaming caret, whether OpenRouter accepts these requests
-or these tool schemas at all, whether DuckDuckGo still serves markup the parser
+Every module passes `node --check`, every import and DOM id resolves, and 102 checks run
+under Node against stubbed `chrome` and `fetch` cover the service worker's SSE handling and
+tool loop, the model settings, the port client, the search parser and HTML extraction, the
+`read_page` guard, the page half of a tool round-trip, and the agent registry.
+
+Because the CSP error stopped the styles applying, **no one has yet seen the interface
+render as intended**, and the real network round-trip is still untested: `app.js` boot
+order, the modal, the panes rendering, the streaming caret, whether OpenRouter accepts these
+requests or these tool schemas at all, whether DuckDuckGo still serves markup the parser
 recognises, and whether Chrome returns a readable `Location` for a `redirect: 'manual'`
 response — which the redirect guard depends on. The tool loop has only been driven by
 scripted SSE bodies.
@@ -113,7 +122,16 @@ The test scripts live in `/tmp` and are **not committed** — the repository sta
 test runner, and adding one was out of scope. They are the obvious first candidate if that
 changes.
 
-## Known open item
+## Known open items
+
+**Two presentation defects from the first browser run, both in task 7:** the CSP violation
+above, and the right pane overlapping its Send/Clear footer. Nothing outside `src/ui/` is
+involved.
+
+**Nothing stops a `style="…"` from coming back.** `manifest.json`'s `style-src 'self'` will
+refuse it in the browser, which is the guard, but there is no lint step and no test runner
+in this repository, so the earliest that pattern is caught is a console error on a new tab.
+The rule worth writing is a discovery finding, not code.
 
 **`deepseek/deepseek-v4-flash` is unverified.** It is in the model picker exactly as the
 owner wrote it and has not been checked against OpenRouter's catalogue. If the id is wrong,
