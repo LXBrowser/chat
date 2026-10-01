@@ -266,7 +266,12 @@ h1, h2, h3, h4 {
 .composer {
   display: flex;
   flex-direction: column;
-  gap: 0;              /* the label sits flush on the textarea's border */
+  /* Was 0, to sit the label flush on the textarea's border. Zero is the wrong
+     value here: the label's line box then ends exactly on the border, and at
+     11px uppercase with letter-spacing it reads as touching rather than as
+     flush. 4px is `.eyebrow`'s own bottom margin, so it introduces no new
+     spacing value to the design system. */
+  gap: 4px;
   /* Absorbs whatever the controls above it do not need. This was `height: 100%`,
      which resolved against the whole body and pushed the column past the footer.
      A percentage cannot do this job: it knows the container's height and nothing
@@ -293,7 +298,9 @@ h1, h2, h3, h4 {
 }
 
 .composer__hint {
-  margin-top: 8px;     /* the column's gap is 0, so the hint brings its own */
+  /* Halved from 8px when the column's gap went from 0 to 4px, so the space
+     between the textarea and the hint stays 8px in total. */
+  margin-top: 4px;
 }
 
 .composer__input:focus-visible {
