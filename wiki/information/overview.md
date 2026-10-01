@@ -10,12 +10,16 @@ built-in search-and-read tool, and keep every conversation in local storage.
 
 ## What it does
 
-* **Three floating panes.** Chat history and the synthesized response on the left, live
-  agent status and logs in the centre, and your prompt, attachments, and controls on the
-  right. Each pane scrolls independently.
+* **Three floating panes.** Chat history on the left, the conversation in the centre, and
+  your prompt, attachments, and controls on the right. Each pane scrolls independently.
+  The centre pane reads top to bottom: the model picker, a single live status row, and the
+  conversation stream.
+* **One status row, not a log.** A single line above the conversation reports what the
+  agents are doing — `Working…`, `Searching…`, `Writing…`, `Answer ready` — and its text
+  changes in place. It never grows a line, so there is no scrollback to read and no rows
+  to scroll past.
 * **Multi-agent mode.** A toggle turns delegation on, and a count sets how many sub-agents
-  may run at once. Agents appear in the centre dropdown while they work and leave it when
-  they finish.
+  may run at once. The number currently running rides in the status row itself.
 * **Local storage.** Conversations live in IndexedDB in your browser. Nothing leaves the
   machine except the prompts you send and the pages the search tool fetches.
 * **Search and read.** The main agent can search the web and pull the readable text off a
@@ -37,44 +41,50 @@ built-in search-and-read tool, and keep every conversation in local storage.
 ## Current state
 
 `0.1.0` is written to chat for real, and every item below is implemented. **The interface
-is confirmed working in a browser; the request path is not.** Four Chrome runs have each
-been stopped by a different fault — a content-security violation, a `boot()` that was never
-called, a manifest with no `permissions` at all, and a DOM helper that threw before any
-listener was attached — and all four are fixed. The last of those presented as six
-unrelated dead controls, which is the shape a single early fault takes when it stops the
-page from wiring anything.
+and the send path are confirmed working in a browser; nothing past the first answer has
+been seen.** Four Chrome runs have each been stopped by a different fault — a
+content-security violation, a `boot()` that was never called, a manifest with no
+`permissions` at all, and a DOM helper that threw before any listener was attached — and all
+four are fixed. The last of those presented as six unrelated dead controls, which is the
+shape a single early fault takes when it stops the page from wiring anything.
 
 The extension is now driven in Chromium: boot completes, the modal works, chats can be
 started, opened, renamed and deleted, the model and multi-agent controls respond, and Send
-starts, stores the prompt, reports its outcome and re-enables. **Everything that needs a
-billable call remains unobserved** — the stream, the tool loop, sub-agent fan-out, and the
-`read_page` guard:
+streams an answer word by word into the transcript, saves both sides to the chat, and
+re-enables. That send was confirmed against a **stubbed** response, not a real one — the
+service worker's `fetch` was replaced with a scripted body so the port, the SSE parser, the
+delta assembly and the IndexedDB write all ran with no key and no billable call. What a real
+key has still never exercised is everything downstream of the first answer:
 
 * load it unpacked; an API-key modal blocks the app until a key is stored — **confirmed**
 * start, open, rename, and delete chats — all stored locally in IndexedDB — **confirmed**
 * **send a prompt and watch the answer arrive word by word**; the prompt and the answer are
-  both saved to the chat — *the send is confirmed, the stream is not*
+  both saved to the chat — *confirmed against a stubbed response, never a real one*
 * pick a model from the dropdown, or type any OpenRouter model id to override it — *the
   control is confirmed, its effect on a request is not*
 * switch multi-agent mode on, set a cap, and send — every sub-agent makes its own request,
-  logs its answer in the centre pane, and **leaves the list the moment it finishes** —
-  *the toggle is confirmed, the fan-out is not*
+  and the running count in the status row **drops the moment it finishes** — *the toggle is
+  confirmed, the fan-out is not*
 * **ask something the model cannot answer from memory** and it will search, read a result,
-  and say where the facts came from. Tool calls appear in the centre pane as they run.
+  and say where the facts came from. The status row names the tool as it runs.
 * **have the chat rename itself** once the main agent knows what the conversation is about
+
+A failed send now says why, under the Send button. It used to be written to a log pane
+nobody was looking at, so a bad key, a declined card, an empty answer and a dead worker all
+presented as a Send that did nothing.
 
 That caveat is not caution for its own sake. `boot()` was found defined and never called,
 so the entire application sat inert behind a correct-looking interface until the second
 Chrome run, and 122 static checks passed over all three of the early faults because none of
 them executes `app.js`. Walk the checklist in [Setup](../environments/setup.md) before
 relying on any of it — expect that first run with a real key to surface further defects,
-because the service worker, the tool loop and the `read_page` guard have still never seen a
+because the tool loop, sub-agent fan-out and the `read_page` guard have still never seen a
 live request.
 
 What does not exist yet:
 
-* **no synthesis** — sub-agents answer independently and are logged; nothing merges them
-  into one response
+* **no synthesis** — sub-agents answer independently and nothing merges them into one
+  response
 * **tools are for the main agent only** — sub-agents answer from what they were given and
   cannot search
 * **no cancel** — a request in flight can only be waited out

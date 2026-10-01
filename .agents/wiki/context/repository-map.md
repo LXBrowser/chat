@@ -37,10 +37,12 @@ src/
     app.js             Wiring only. Boot order, then listeners.
     lib/
       storage.js       chrome.storage.local. API key and UI settings.
-      agents.js        The agent registry. list() returns only running
-                       agents — that is what makes auto-remove total.
+      agents.js        The agent registry behind the status row. list()
+                       returns only running agents — that is what makes
+                       auto-remove total. No log: the row changes in place.
       sessions.js      The only module that touches the database.
-      views.js         All DOM rendering. No state of its own.
+      views.js         All DOM rendering. No state of its own. setActivity()
+                       assigns textContent to the one status node.
       api-key.js       The blocking key gate.
       openrouter.js    Port client for the service worker.
                        Never sees the API key.

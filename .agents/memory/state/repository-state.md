@@ -46,9 +46,9 @@ models.
 
 ## What is not built
 
-* **No synthesis.** Sub-agents answer independently and are logged in the centre pane;
-  nothing combines them into a single response. This was an owner decision for this phase,
-  to keep the token cost and the architecture manageable.
+* **No synthesis.** Sub-agents answer independently and nothing combines them into a
+  single response. This was an owner decision for this phase, to keep the token cost and
+  the architecture manageable.
 * **No tools for sub-agents.** The schemas are declared only on the Main Agent's requests.
 * **The system instructions are not editable in the interface.** They are seeded into
   `agent_instructions` and read from there; nothing in the UI writes them yet.
@@ -75,23 +75,34 @@ the title input follows, delete works, the multi-agent toggle flips, the modal o
 cancels, Clear empties the textarea, Send enters its busy state and re-enables, and a
 dropped file is listed. No page errors.
 
-What it does **not** confirm is anything that needs a billable call.
+What it does **not** confirm is anything that needs a billable call — with one exception
+now recorded below: the send path has been driven with a stubbed response.
+
+**The centre pane reads top to bottom: model picker, one status row, conversation.** The
+status row's text changes in place and is asserted to be the same DOM node before and after
+a send, with the pane's element count unchanged. There is no longer an agent log, an agent
+dropdown, or a count badge anywhere in the interface.
 
 * Load unpacked; the API-key modal blocks until a key is stored. **Confirmed.**
 * New chat, open chat, delete chat, rename chat — all against IndexedDB. **Confirmed.**
-* **Send a prompt and get a streamed answer**, token by token, in the left pane. The
-  prompt and the final answer are both stored in `chat_messages`. *The send is confirmed to
-  start, store the prompt and report an outcome; the stream itself is not, for want of a
-  key.*
+* **Send a prompt and get a streamed answer**, token by token, in the centre pane. The
+  prompt and the final answer are both stored in `chat_messages`. **Confirmed against a
+  stubbed response** — the worker's `fetch` was replaced with a scripted SSE body, so the
+  port, the parser, the delta assembly and the IndexedDB write all ran with no key and no
+  billable call. A real OpenRouter stream still has not.
 * Choose the model from the dropdown, or type any OpenRouter model id to override it. *The
   dropdown and the hint are confirmed; the effect on a request is not.*
 * Toggle multi-agent mode; the limit input enables and validates at ≥ 1. **Confirmed.**
-* Send with multi-agent on; **every sub-agent makes a real OpenRouter call**, logs its
-  result in the centre pane, and leaves the dropdown when it finishes — as does the Main
-  Agent. *Not observed.*
+* Send with multi-agent on; **every sub-agent makes a real OpenRouter call**, and the
+  running count in the status row **drops the moment it finishes** — as it does for the
+  Main Agent. The count is confirmed against the registry; the fan-out is not observed.
 * **Ask something the Main Agent cannot answer from memory.** It calls `search_web`,
   follows a result with `read_page`, cites where the facts came from, and renames the chat
-  once it knows the subject. Tool calls log in the centre pane as they run. *Not observed.*
+  once it knows the subject. The status row names the tool as it runs. *Not observed.*
+* **A failed send says why**, under the Send button — a 401 and an empty answer both
+  state their reason. **Confirmed against a stubbed 401.** It used to be written to a log
+  pane the person sending was not looking at, so every failure presented as a Send that
+  did nothing.
 
 ## Limits worth knowing
 
@@ -113,23 +124,26 @@ What it does **not** confirm is anything that needs a billable call.
 
 ## What has not been verified
 
-**The request path. Everything from the port to OpenRouter outward.** The harness seeds a
-placeholder key so `boot()` gets past the gate, which is enough to prove the interface and
-nothing more. Whether OpenRouter accepts these requests or these tool schemas, whether the
-streaming caret behaves over a live stream, whether DuckDuckGo still serves markup the
-parser recognises, and whether Chrome returns a readable `Location` for a
-`redirect: 'manual'` response, which the redirect guard depends on — all unobserved. The
-tool loop has only been driven by scripted SSE bodies.
+**Anything past the first answer, and the first answer itself against a real key.** The
+harness seeds a placeholder key so `boot()` gets past the gate, which is enough to prove the
+interface and nothing more. The send path has since been driven with a **stubbed** response,
+so the port, the SSE parser, delta assembly, storage and repaint are all exercised — but
+against a body this repository wrote, not OpenRouter's. Whether OpenRouter accepts these
+requests or these tool schemas, whether the streaming caret behaves over a live stream,
+whether DuckDuckGo still serves markup the parser recognises, and whether Chrome returns a
+readable `Location` for a `redirect: 'manual'` response, which the redirect guard depends on
+— all unobserved. The tool loop has only been driven by scripted SSE bodies.
 
 Every module passes `node --check`, every import and DOM id resolves, no `style` attribute
 or style assignment remains anywhere in `src/`, all 47 classes in `index.html` are defined
 in the stylesheets, `boot()` resolves to an invocation, no top-level function in `app.js`
 is left uncalled, and every `chrome.<api>` used in `src/` has its permission declared or
-needs none. **122 checks** run under Node against stubbed `chrome` and `fetch` cover the
+needs none. **170 checks** run under Node against stubbed `chrome` and `fetch` cover the
 service worker's SSE handling and tool loop, the model settings, the port client, the search
 parser and HTML extraction, the `read_page` guard, the page half of a tool round-trip, the
 agent registry, the manifest's permissions, the `data-*` names `views.js` writes against the
-selectors `app.js` uses, and the boot step labels against the file's own load-order list.
+selectors `app.js` uses, the centre pane's structure, the single status row, a failed send
+reaching the composer, and the boot step labels against the file's own load-order list.
 
 **The static suite still cannot execute `app.js`, and that cost three rounds.** A fully
 written, correct, entirely unreachable `boot()` passed every check in two consecutive

@@ -193,4 +193,92 @@ on this branch, 2 failing on the pre-fix tree. It asserts the rethrow *and* that
 still marks the agent failed before throwing — a "fix" that replaced the catch with a bare
 `throw` would pass a one-directional check and lose the agent's own state.
 
-138 Node checks (up from 133) and 19 browser checks still pass.
+138 Node checks and 19 browser checks still pass.
+
+**That figure was a partial count, and it is corrected at the end of task 3.** The whole
+suite across all twelve files is **170**, not 138 — the earlier tally ran nine of them. The
+number in `repository-state.md` now reads 170 and matches a full run.
+
+### Task 3 — `refactor/centre-pane-restructure`
+
+**The centre pane holds exactly three things, and it holds them in the order the owner gave.**
+
+`index.html` — the model picker moved out of the right pane whole, `#transcript` moved from
+the **left** pane to the centre, and a new `.activity` row sits between them. The left pane's
+title changed from "Conversation" to "Chats", because the conversation is no longer there;
+the centre's became "Conversation". The right pane lost the model block and gained nothing.
+
+`renderTranscript()` **did not change.** That is the point of report #2: there was never a
+rendering bug. The renderer always targeted `$('transcript')`; `#transcript` was simply
+declared in the wrong `<section>`. So the element moved and the function stayed, which is why
+this task is a `refactor:` rather than a `fix:`.
+
+**The status row is one node, structurally.** `views.setActivity(text)` assigns `textContent`
+to the existing `<span>`; there is no code path that appends. `white-space: nowrap` with
+`overflow: hidden; text-overflow: ellipsis` makes it one line *by construction* rather than
+by the length of the text — I first wrote `overflow-wrap: anywhere`, caught that it would let
+the row become two lines, which is the exact outcome ruled out, and replaced it.
+
+The append-only log could not be kept alongside it. `agents.log()` accumulated lines into a
+`<pre>` by definition; a row that changes in place and a log that grows are different
+surfaces, and the owner chose the row. So `agents.js` lost `logs`, `log()`, `logLines()`,
+`clear()`, `get()`, `isActive()` and `records`, and kept the whole lifecycle —
+`spawn`/`finish`/`fail`/`list`/`activeCount`/`subscribe` — which is all the row and its count
+need. `#agent-count-badge` went with it: the count folds into the row's own text as
+`Working… · 1 running`.
+
+**Announcement volume went down, deliberately.** `#transcript` carried `aria-live="polite"`
+and is rewritten on every streamed token — a chatty live region. The status row now takes
+`role="status"` and the streaming bubble takes `aria-busy`. This is a real accessibility
+trade, not a cleanup: fewer interruptions, at the cost of the transcript no longer announcing
+itself. Recorded as such rather than presented as an improvement.
+
+**Two pre-existing contrast defects, in blocks I was already editing.** `.msg__role` and
+`.send-status` both used `--ink-400` on glass, and `accessibility.md` is explicit that
+`--ink-400` clears only `--white` and `--silver-050`. Both moved to `--ink-500`. Found
+because the new row had to pick a token for the same job and the answer was already
+contradicting itself two rules away.
+
+**A false documentation claim, found because I had rewritten the file it was about.**
+`repository-state.md` stated that the static suite covered "the agent registry". Nothing in
+`/tmp/wt` touched it. `/tmp/wt/registry.test.mjs` now does, with 13 checks.
+
+#### Verification
+
+| Harness | Result | Pre-fix |
+|---|---|---|
+| `/tmp/pw/layout.js` — 24 browser checks | 24/24, no page errors | fails |
+| `centrepane.test.mjs` — structure and placement | 11/11 | 5 pass / 6 fail |
+| `statusrow.test.mjs` — one row, no append | 12/12 | 1 pass / 11 fail |
+| `registry.test.mjs` — the lifecycle the row needs | 13/13 | n/a (new file) |
+
+**The browser check is the one that matters, because the requirement was the one static
+checks cannot prove.** "The text must change in place and never spawn a line" is not a
+property of the source; it is a property of the DOM over time. So `/tmp/pw/layout.js` attaches
+a `MutationObserver` to the status text node *before* sending and records every state it
+passes through:
+
+```
+Working… · 1 running   dot dot--running   aria-busy=true
+Writing… · 1 running   dot dot--running   aria-busy=true
+Answer ready           dot dot--done      aria-busy=false
+```
+
+Two things fall out of observing the node rather than sampling it. The sequence is complete —
+no state was missed by polling too slowly, which is exactly how my first attempt failed, twice,
+before I stopped sampling. And an observer attached to an element that gets *replaced* simply
+stops reporting, so the trace continuing through to `Answer ready` is itself proof the node
+was never swapped. Alongside it: `#activity` carries a sentinel property set before the send
+and still present after; the pane's child count is 3 before and 3 after; the row is 36px tall
+before and 36px after.
+
+**Alignment is measured, not declared.** `agent left=345 user left=767`, pane `345…855` —
+the user's left edge is right of the agent's, the agent's is flush with the stream's left
+edge, and neither overflows. A rule that is present in the stylesheet and overridden later
+still lays out wrong, so reading the CSS would not have been the check.
+
+**Three of my own test bugs, none of them product bugs.** `body()` searched `function send(`
+where the code is `const send = async () => {`; the dot selector assumed `id` preceded
+`class`; and a `doesNotMatch(/\.dot--error/)` matched the *comment in components.css*
+explaining why there deliberately is no `.dot--error`. That last one is the check working as
+intended in the wrong direction — the answer was already correct, and the comment says why.

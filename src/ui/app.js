@@ -34,9 +34,6 @@ import * as views from './lib/views.js';
 
 const $ = (id) => document.getElementById(id);
 
-/** The agent the centre pane is showing. Not persisted — agents do not outlive the tab. */
-let selectedAgentId = null;
-
 /** Mirrored UI settings, the single source of truth for the right pane. */
 let settings = { multiAgentOn: false, agentLimit: 3, model: '', customModel: '' };
 
@@ -55,6 +52,53 @@ let busy = false;
  * message repainted away in the same tick is a failure the user never sees.
  */
 let sendNote = '';
+
+// ---------------------------------------------------------------------------
+// Status row
+// ---------------------------------------------------------------------------
+
+/**
+ * What the agents are doing, and the state of the dot beside it.
+ *
+ * Held here rather than in `views` because it is composed from two sources — this, and the
+ * running-agent count from the registry — and only the composition belongs in one place.
+ * A field rather than a string, so the count can be re-read without losing the text.
+ */
+let activity = { text: 'Idle', running: false, done: false };
+
+/**
+ * Repaints the status row from the current activity and the live agent count.
+ *
+ * The count is appended to the text rather than held in a badge of its own: there is one
+ * row and it says everything, which is what makes "it never grows a second line" a property
+ * of the design rather than a promise.
+ */
+function paintActivity() {
+  const running = agents.activeCount();
+  const count = running ? `${running} running` : '';
+  views.setActivity(count ? `${activity.text} · ${count}` : activity.text, activity);
+}
+
+/**
+ * Sets what the agents are doing. The text changes in place; no row is ever added.
+ *
+ * @param {string} text
+ * @param {{running?: boolean, done?: boolean}} [state]
+ */
+function setActivity(text, state) {
+  activity = { text, running: false, done: false, ...state };
+  paintActivity();
+}
+
+/** A readable phrase for a tool the main agent has just asked for. */
+function toolActivity(name) {
+  switch (name) {
+    case 'search_web': return 'Searching…';
+    case 'read_page': return 'Reading…';
+    case 'update_chat_title': return 'Naming this chat…';
+    default: return `${name}…`;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Prompts
@@ -153,24 +197,16 @@ async function boot() {
   // 5. Wiring.
   await step('5 · controls', async () => {
     wireConversation();
-    wireAgents();
     wireComposer();
     wireMultiAgent();
     wireModel();
   });
 
-  // The registry is the source of truth for the dropdown, so one subscription drives
-  // both the list and the log — there is no separate "agent finished" path to forget.
-  agents.subscribe(paintAgents);
-  paintAgents();
-}
-
-/** Repaints the centre pane from the registry. */
-function paintAgents() {
-  const selected = views.renderAgents(selectedAgentId);
-  // When the watched agent leaves the list, fall back rather than showing nothing.
-  selectedAgentId = selected ? selected.id : null;
-  views.renderLog(selectedAgentId);
+  // The registry is the source of truth for how many agents are running, so one
+  // subscription keeps the count in the status row live — there is no separate
+  // "agent finished" path to forget.
+  agents.subscribe(paintActivity);
+  paintActivity();
 }
 
 /** Redraws everything derived from the conversation. */
@@ -208,50 +244,6 @@ function wireConversation() {
 
   document.querySelector('[data-action="new-chat"]').addEventListener('click', async () => {
     await sessions.createSession();
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Centre pane — the dropdown
-// ---------------------------------------------------------------------------
-
-function wireAgents() {
-  const trigger = $('agent-select-trigger');
-  const menu = $('agent-select-menu');
-
-  const closeMenu = () => {
-    menu.hidden = true;
-    trigger.setAttribute('aria-expanded', 'false');
-  };
-
-  const openMenu = () => {
-    menu.hidden = false;
-    trigger.setAttribute('aria-expanded', 'true');
-  };
-
-  trigger.addEventListener('click', () => (menu.hidden ? openMenu() : closeMenu()));
-
-  // Escape closes, and focus leaving the widget closes it — no click-away handler
-  // needed, and it stays keyboard-operable.
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && !menu.hidden) {
-      closeMenu();
-      trigger.focus();
-    }
-  });
-
-  $('agent-select').addEventListener('focusout', (event) => {
-    if (!$('agent-select').contains(event.relatedTarget)) closeMenu();
-  });
-
-  menu.addEventListener('click', (event) => {
-    const option = event.target.closest('[data-agent-id]');
-    if (!option) return;
-    selectedAgentId = option.dataset.agentId;
-    const selected = views.renderAgents(selectedAgentId);
-    selectedAgentId = selected ? selected.id : null;
-    views.renderLog(selectedAgentId);
-    closeMenu();
   });
 }
 
@@ -471,7 +463,11 @@ async function runMainAgent(history) {
   const agent = agents.spawn({ name: 'Main Agent', task: summarise(history) });
 
   const handle = views.startStream();
-  agents.log(agent.id, `▸ ${model}`);
+  setActivity('Working…', { running: true });
+
+  // Set once, on the first chunk. Re-running it per delta would rewrite the same text
+  // hundreds of times for no visible difference — the row changes in place either way.
+  let streaming = false;
 
   try {
     const answer = await openrouter.chat({
@@ -480,32 +476,43 @@ async function runMainAgent(history) {
       messages: history,
       tools: TOOL_SCHEMAS,
       pageTools: pageToolNames(),
-      onDelta: (delta) => views.pushDelta(handle, delta),
-      onToolCall: (call) => agents.log(agent.id, `· ${call.name}(${summariseArgs(call.arguments)})`),
+      onDelta: (delta) => {
+        if (!streaming) {
+          streaming = true;
+          setActivity('Writing…', { running: true });
+        }
+        views.pushDelta(handle, delta);
+      },
+      onToolCall: (call) => {
+        streaming = false;
+        setActivity(toolActivity(call.name), { running: true });
+      },
       onTool: (name, args) => runPageTool(name, parseArgs(args)),
     });
 
     // Checked before the agent finishes: an empty answer is a failure, and reporting it
     // after `finish` would find the agent already out of the active list, so nothing
-    // would be logged.
+    // would show.
     if (!answer.trim()) throw new Error('The model returned an empty answer.');
 
-    agents.finish(agent.id, summariseAnswer(answer));
+    agents.finish(agent.id);
+    setActivity('Answer ready', { done: true });
 
     // Before the write, not after: storing repaints the transcript from the database, and
     // the streamed copy has to be gone before that repaint or the answer appears twice.
     views.discardStream();
     await sessions.appendMessage('assistant', answer);
   } catch (err) {
-    agents.fail(agent.id, err.message);
+    agents.fail(agent.id);
     // Nothing was stored, so whatever arrived stays on screen — a partial answer is still
     // more use than an empty bubble.
     views.endStream();
+    setActivity('Failed');
     // Rethrown, and this is the whole fix. Swallowing it here meant `send()` reached its
     // `sendNote = ''` on the way through and reported success: a 401, a 402, an empty
-    // answer and a dead worker all presented as a Send that did nothing. The reason was
-    // written to the agent log the entire time, in a pane the person sending was not
-    // looking at.
+    // answer and a dead worker all presented as a Send that did nothing. The reason is
+    // shown under the Send button now, which is where someone who just pressed it is
+    // looking.
     throw err;
   }
 }
@@ -513,9 +520,9 @@ async function runMainAgent(history) {
 /**
  * Fans a prompt out across sub-agents, up to the configured cap.
  *
- * Each is a real OpenRouter request with its own answer, logged when it finishes. There
- * is no synthesis step: their results are not written to the transcript and are read in
- * the centre pane.
+ * Each is a real OpenRouter request with its own answer. There is no synthesis step:
+ * their results are not written to the transcript, and only the running count reaches
+ * the status row.
  *
  * @returns {Promise<void>} resolves when every sub-agent has settled — each settles on
  * its own, so one failure never takes the others down.
@@ -544,12 +551,12 @@ async function delegate(prompt, history) {
 /**
  * One sub-agent, start to finish.
  *
- * Never rejects: a failure is the agent's own log line, because a sub-agent that failed
- * is information, not an error in the page.
+ * Never rejects: a sub-agent that failed is information about the fan-out, not an error
+ * in the page, and the Main Agent is still streaming. Its only effect on the interface
+ * is the running count, which the registry already keeps live.
  */
 async function runSubAgent({ name, prompt, messages, model }) {
   const agent = agents.spawn({ name, task: prompt.slice(0, 40) });
-  agents.log(agent.id, `▸ ${model}`);
 
   try {
     const answer = await openrouter.chat({
@@ -558,10 +565,9 @@ async function runSubAgent({ name, prompt, messages, model }) {
       messages,
     });
 
-    agents.log(agent.id, `· ${answer.length} characters`);
-    agents.finish(agent.id, summariseAnswer(answer));
-  } catch (err) {
-    agents.fail(agent.id, err.message);
+    agents.finish(agent.id);
+  } catch {
+    agents.fail(agent.id);
   }
 }
 
@@ -585,21 +591,6 @@ function parseArgs(raw) {
   } catch {
     return {};
   }
-}
-
-/** A one-line rendering of tool arguments, for the agent log. */
-function summariseArgs(raw) {
-  const args = parseArgs(raw);
-  const first = Object.values(args)[0];
-  if (first === undefined) return '';
-  return String(first).replace(/\s+/g, ' ').slice(0, 40);
-}
-
-/** A one-line summary for the finish message, so the log ends with something readable. */
-function summariseAnswer(answer) {
-  const clean = String(answer ?? '').replace(/\s+/g, ' ').trim();
-  if (!clean) return 'no answer';
-  return clean.length > 120 ? `${clean.slice(0, 117)}…` : clean;
 }
 
 // ---------------------------------------------------------------------------
