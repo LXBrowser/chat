@@ -39,3 +39,32 @@ to the `AGENTS.md` local rows **in the same commit** as the tree — the setup d
 did not include them, so no commit in between carries a broken link. Task 3 must match
 the storage contract described here or the database verification in `wiki/environments/setup.md`
 will not hold.
+
+### Task 2 — `docs/design-system`
+
+Scattered `DESIGN.md` into `.agents/design/`, one subject per file.
+
+**Landed.** Thirteen files: `principles`, `tokens-palette`, `tokens-glass`,
+`tokens-geometry`, `glass-surface-recipe`, `overlay-opacity`, `components`,
+`layout-chrome`, `runtime-includes`, `css-organization`, `reusability`, `accessibility`,
+`extension-adaptation`. Every section of `DESIGN.md` maps to exactly one of them.
+
+`extension-adaptation.md` is new — `DESIGN.md` described a system for static
+documentation sites and said nothing about a product UI. It records what carries over
+unchanged, what the extension changes, and — most usefully — that
+`overlay-opacity.md` is binding on two specific surfaces.
+
+**Router placement.** `design-index.md` went to `.agents/index/`, not to
+`.agents/design/`. The directory mandate forbids an index inside its own scope, and that
+applies to a tree the mandate does not sanction either. The design tree is the exception to
+the *tree list*, not to the *index placement* rule.
+
+**Added in the same commit,** so no commit in the stack carries a broken link: the
+`design-index.md` row in `root-index.md`, the local row in `AGENTS.md`, and the pointer in
+`README.md`.
+
+**What the next task now depends on.** Task 3 copies `tokens-palette`,
+`tokens-glass`, and `tokens-geometry` into `src/ui/css/tokens.css` **verbatim** — same
+names, same values, no renaming. The agent-status dropdown and the OpenRouter modal must
+be opaque, per `overlay-opacity.md`. Anything else task 3 styles should be a component from
+`components.md` rather than new CSS.

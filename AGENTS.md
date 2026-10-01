@@ -113,6 +113,7 @@ Local instructions — rows for this repository's own files, below the shared ro
 | When you are about to… | Read |
 |---|---|
 | Do anything at all in this project | [`.agents/rules/repository.md`](.agents/rules/repository.md) |
+| Style any part of the extension or the docs site | [`.agents/index/design-index.md`](.agents/index/design-index.md) |
 
 ## Reading order
 

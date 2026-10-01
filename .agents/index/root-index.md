@@ -16,6 +16,7 @@ Read exactly **one branch per task** from here, plus `memory-index.md` every ses
 | Index | Scope | Load when |
 |---|---|---|
 | [`agents-index.md`](agents-index.md) | This repository's instruction set | You need a rule specific to this repository. |
+| [`design-index.md`](design-index.md) | `.agents/design/` — the Silver Glass design system | You are styling anything, or choosing a colour, radius, shadow, or surface treatment. |
 | `{shared}/index/root-index.md` | The shared instruction set | You need a branching, commit, pull request, planning, or creator convention. |
 | [`agent-wiki-index.md`](agent-wiki-index.md) | `.agents/wiki/` agent knowledge | You need an SOP, domain guideline, or operating context written for agents. |
 | [`project-wiki-index.md`](project-wiki-index.md) | `wiki/` human documentation | You need to read or write documentation a person will read. |

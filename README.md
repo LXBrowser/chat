@@ -61,4 +61,4 @@ connector and is not vendored here. Start at `AGENTS.md`, then
 
 The visual language is the Silver Glass design system, one subject per file under
 `.agents/design/`, routed from
-[`.agents/index/root-index.md`](.agents/index/root-index.md).
+[`.agents/index/design-index.md`](.agents/index/design-index.md).
