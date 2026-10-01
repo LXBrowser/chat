@@ -78,9 +78,11 @@ The extension has never been run in CI, so this is a manual pass. Work down it.
 **This costs money.** Every prompt is a billable OpenRouter call, and step 5 is five of
 them. Point the model at something cheap before you start.
 
-**This checklist has never been run to the end.** It was written before the first Chrome
-run and describes an application that turned out never to have booted at all. Expect to
-find things that are not in here.
+**Step 1 has been driven; steps 2–12 have not, and the reason is money.** The unpacked
+extension has been loaded into Chromium and exercised with a placeholder key, which is
+enough to prove the gate, the database, the rendering and every control — but not enough to
+make a billable call. Everything from **Send something** onward needs a real key and has
+never been run by anyone. Expect to find things that are not in here.
 
 1. **Load unpacked.** Open a new tab. A modal blocks the app asking for an OpenRouter
    key — nothing else is usable until you provide one.
@@ -88,6 +90,11 @@ find things that are not in here.
    Send button, and it names which fault it is: a missing `storage` permission, or a page
    that is not running as an extension. *Check the page has its permissions* above settles
    it in one line. Both faults were real here, and each cost a round to find.
+   **If boot gets past the gate and then fails, the message names the step** —
+   `Startup failed at 4 · history: …`. Read that number: it is the step in `boot()` that
+   threw, and each one is numbered in the file's own header comment. A message with no
+   step number means the API-key gate was cancelled, which is your own doing and not a
+   fault.
    **Open DevTools first and watch the console.** An
    `Applying inline style violates the following Content Security Policy directive`
    error means a `style="…" attribute has crept back into the markup — `manifest.json`
@@ -104,9 +111,11 @@ find things that are not in here.
    > static HTML and CSS, so it renders identically whether or not any JavaScript runs.
    > It once sat exactly like this with `boot()` defined and never called — no gate, no
    > database, no listener on any control — and then again with a manifest that declared no
-   > `permissions` at all, where every storage call threw. The checks that prove the app is
-   > alive are the ones after this: a chat in the history list, and a **Send** button that
-   > disables itself.
+   > `permissions` at all, where every storage call threw, and then again with a
+   > `renderHistory()` that threw before writing a single row, which stopped `boot()`
+   > before step 5, where every listener is attached. Three different causes, one
+   > identical-looking page. The checks that prove the app is alive are the ones after
+   > this: a chat in the history list, and a **Send** button that disables itself.
 2. **Send something.** Type a short prompt, press **Send**. The chat is titled from the
    first line, the prompt appears in the left pane, and then **the answer should start
    arriving word by word** with a blinking caret. The button says *Waiting…* and is

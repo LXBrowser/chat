@@ -254,6 +254,61 @@ rule is deleted rather than retuned: it carried a margin only to defend a gap th
 column already provides, and at 6px it would have needed a 2px shim that breaks the next
 time anyone edits the gap.
 
+### The page could not build a single element
+
+**`el()` in `src/ui/lib/views.js` could not write a dataset, and it threw on every call.**
+The helper builds elements with `Object.assign(node, props)`, and three call sites pass
+`dataset: { … }`. `Object.assign` performs `[[Set]]` on each key, and this is an ES module
+and therefore strict mode. `HTMLElement.dataset` is declared
+`[SameObject] readonly attribute DOMStringMap` — **it has no setter at all**:
+
+```
+TypeError: Cannot set property dataset of #<HTMLElement> which has only a getter
+    at Object.assign (views.js:26)   <- el()
+    at renderHistory (views.js:63)
+```
+
+`el()` now unpacks `dataset` into the map key by key, which is also what performs the
+camelCase to `data-kebab-case` conversion, so `{ sessionId }` lands as `data-session-id`.
+Every other prop still goes through `node[key] = value` on the same pass, and the attribute
+**names are unchanged** — `app.js` selects on them, so renaming one would silently re-break
+the handler it was written to serve.
+
+**One fault, six symptoms, and nothing in the console said which control was involved.**
+`renderHistory()` died on its first element, so `boot()` rejected at step 4, so **step 5 —
+where every listener is attached — never ran**:
+
+| Reported | Cause |
+|---|---|
+| Settings does nothing | step 5 never ran; the catch wired Settings to `location.reload()` |
+| Multi-agent toggle inert | step 5 never ran |
+| Dropzone and browse do nothing | step 5 never ran |
+| Send and Clear broken | step 5 never ran |
+| History empty and unclickable | `renderHistory()` threw before writing a single row |
+| `dataset` getter error | the fault itself |
+
+Two of the five reported items were not faults at all. The Model dropdown populates
+correctly, because `renderModel` is step 2 and runs before the failure; an empty dropdown
+was the key gate standing open with no key stored. And `index.html` has exactly one
+`.model` container, one `#model-select`, 34 unique ids and no duplicates.
+
+**This is the fault that only a real browser could find.** Three rounds of green checks
+passed over it, because none of them executed `app.js` and the repository had no DOM
+harness. See [Unverified](#unverified) for what running it changed.
+
+### A boot failure now says which step failed
+
+A rejection reached the owner as a bare `err.message` — "Cannot read properties of
+undefined" — with no indication of which of the five steps produced it. That was the whole
+of the evidence the fourth run had, and it is a large part of why the fault above took
+three rounds to find: nothing on the page pointed at `renderHistory()`.
+
+`boot()` now reports `Startup failed at 4 · history: <message>`. The order of `boot()` is
+untouched — the gate still resolves first and the listeners are still wired last, because
+gate-before-wiring is what makes a cancelled gate recoverable. **The gate is deliberately
+not a numbered step**: cancelling the modal is a decision, not a fault, and labelling it
+"step 1 failed" would report the owner's own choice back to them as a broken browser.
+
 ## Not in this release
 
 * **No synthesis.** Sub-agents each make a real OpenRouter call and log their answer in the
@@ -283,51 +338,66 @@ per round.
 
 ## Unverified
 
-**The extension has been loaded in Chrome three times, and no run has exercised a line of
-application behaviour to completion.** The first reported the CSP violation and the
-right-pane overlap above. The second, after that fix, found the composer label sitting on
-the textarea and the API-key modal never appearing — the modal because `boot()` was never
-called, which means the whole application was inert. The third was the first live execution
-of anything in `app.js`, and it rejected at step 1 because the manifest declared no
-permissions. **All three faults are fixed and none of the fixes has been observed running.**
+**The extension has now been executed end to end in a real browser, and that changes what
+the rest of this section can say.** It has been loaded in Chrome four times. The first
+reported the CSP violation and the right-pane overlap. The second, after that fix, found the
+composer label on the textarea and the API-key modal never appearing — the modal because
+`boot()` was never called, so the whole application was inert. The third was the first live
+execution of anything in `app.js`, and it rejected at step 1 because the manifest declared
+no permissions. The fourth reached step 4 and found the `dataset` fault above, which
+stopped it before a single listener was attached.
 
-What *has* been observed is presentation: the three panes render under the extension's own
-CSP, the composer takes the remaining height, and the Send/Clear footer is not overlapped.
+**Those first three were read off a person looking at a screen.** This one was driven: the
+unpacked extension is loaded into Chromium with Playwright, a placeholder key is written
+into a throwaway profile so the gate opens, and the page is exercised. **19 checks, all
+passing, no page errors**: boot completes, the gate closes, the model dropdown populates,
+`data-session-id` is a real attribute, and every control answers — history rows switch
+chats and delete, the title input follows the open chat, the multi-agent toggle flips
+`aria-pressed`, Settings opens the modal and Cancel closes it, Clear empties the textarea,
+Send enters its busy state, stores the prompt, reports the outcome and re-enables, and a
+dropped file is listed. The composer measures a 6px gap with 6px of clearance to the
+textarea's border.
 
-Verified: every module passes `node --check`; every import and every DOM id target
-resolves; no `style` attribute or style assignment anywhere in `src/`; all 47 classes used
-in `index.html` are defined in the stylesheets; `boot()` resolves to an invocation with no
-top-level function left uncalled; and every `chrome.<api>` used in `src/` has its permission
-declared or is one that needs none. 105 checks run under Node against stubbed `chrome` and
-`fetch` — 26 on the service worker (SSE handling, the tool loop, and assertions that the key
-never appears in anything the worker posts), 11 on the model settings, 11 on the port
-client, 46 on the tools (search parsing, HTML-to-text, entity decoding, the SSRF guard
-including rebinding across a redirect, and both network tools against a stubbed fetch), 8
-on the page side of a tool round-trip, 21 on the agent registry against the auto-remove
-contract, and 3 on the manifest's permissions.
+**What that still does not cover is the request itself.** The harness has no key and no
+intention of having one, so everything past `wireComposer()`'s call into the service worker
+— the port, SSE streaming, the tool loop, sub-agent fan-out — remains unobserved against a
+live OpenRouter. Send is verified to *respond* and to *report an outcome*, not to succeed.
 
-**Not one of those checks executes `app.js`, and the repository has no DOM harness that
-could.** That is how a file with a fully written, correct, entirely unreachable `boot()`
-passed every check in two consecutive rounds — and how a manifest with no `permissions` key
-passed them again. The uncalled-function assertion and the permission sweep close those two
-holes and nothing else: both are one-shot checks against faults already fixed, not standing
-guards.
+Verified statically: every module passes `node --check`; every import and every DOM id
+target resolves; no `style` attribute or style assignment anywhere in `src/`; all 47
+classes used in `index.html` are defined in the stylesheets; `boot()` resolves to an
+invocation with no top-level function left uncalled; and every `chrome.<api>` used in `src/`
+has its permission declared or is one that needs none. **122 checks** run under Node
+against stubbed `chrome` and `fetch` — 26 on the service worker (SSE handling, the tool
+loop, and assertions that the key never appears in anything the worker posts), 11 on the
+model settings, 11 on the port client, 46 on the tools (search parsing, HTML-to-text, entity
+decoding, the SSRF guard including rebinding across a redirect, and both network tools
+against a stubbed fetch), 8 on the page side of a tool round-trip, 21 on the agent registry
+against the auto-remove contract, 3 on the manifest's permissions, 17 on the `data-*`
+attribute names written by `views.js` and selected by `app.js`, and 11 on the boot step
+labels agreeing with the file's own load-order list.
 
-**The composer label is the one thing still not settled.** The CSS committed before this
-release computed roughly 17px of clearance between the glyphs and the textarea's border,
-which cannot produce the reported picture, so a stale stylesheet is the likelier
-explanation — "sitting exactly on the border line" is what `gap: 0` renders, and that is
-what an earlier release shipped. `getComputedStyle(document.querySelector('.composer')).gap`
-returns `6px` on current CSS and `0px` on a stale sheet.
+**The DOM gap is what four rounds of static checks could not close, and it is worth being
+blunt about the cost.** A file with a fully written, correct, entirely unreachable `boot()`
+passed every check twice. A manifest with no `permissions` key passed them again. A helper
+that threw on its first element in a strict-mode module passed them a third time. **None of
+them executed `app.js`, and the repository has no DOM harness to do so.** The uncalled-
+function assertion, the permission sweep and the dataset sweep are one-shot checks against
+faults already fixed — not standing guards, and not a substitute for running the thing.
 
-Not verified: **everything the extension does.** Whether it boots at all past the gate,
-whether OpenRouter accepts these requests or these tool schemas, whether the streaming
-caret behaves over a live stream, whether DuckDuckGo still serves markup this parser
-recognises, and whether Chrome returns a readable `Location` for a `redirect: 'manual'`
-response as the redirect guard assumes. The tool loop has been driven only by scripted SSE
-bodies. Two layout cases are also still unobserved: the right pane below its 140px composer
-floor, and the layout under 900px where the responsive rules give `.pane` a
-`min-height: 260px`.
+**Two of the faults the harness first reported were the harness.** `sessions.current()`
+returns an id rather than a record, and the history list is newest-first, so a test that
+reads `current()?.title` and clicks the last row proves nothing about the product. That is
+recorded because the instinct on a re-run is to go looking for a second real bug.
+
+Not verified: **the request path.** Whether OpenRouter accepts these requests or these tool
+schemas, whether the streaming caret behaves over a live stream, whether DuckDuckGo still
+serves markup this parser recognises, and whether Chrome returns a readable `Location` for a
+`redirect: 'manual'` response as the redirect guard assumes. The tool loop has been driven
+only by scripted SSE bodies. Two layout cases are also still unobserved: the right pane
+below its 140px composer floor, and the layout under 900px where the responsive rules give
+`.pane` a `min-height: 260px`. Neither harness nor checks are committed — the repository
+has no package manager, no build step and no runner.
 
 The procedure is in [Setup](../../../../environments/setup.md).
 

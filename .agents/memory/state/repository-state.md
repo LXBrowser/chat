@@ -60,30 +60,38 @@ models.
 
 ## What works today
 
-**Nothing on this list has ever run to completion.** Two faults stood between the
-application and its first live execution, and each one had to be found by opening Chrome:
-`boot()` was defined and never called, and then `manifest.json` declared no `permissions`
-key at all, so in Manifest V3 Chrome never injected `chrome.storage` and every call through
-it threw. The third Chrome run is the first in which any application code ran at all, and
-it died at step 1 of `boot()` with a `TypeError`. Both are fixed. The correct claim is that
-the code paths exist, not that they work — nothing here has been observed doing any of it.
+**The application now runs, and every control in the list below has been exercised in a
+real browser.** Getting there took four Chrome runs, each stopped by a different fault,
+and none of the three earlier ones could have been found by reading the code: `boot()` was
+defined and never called; `manifest.json` declared no `permissions` key, so Chrome never
+injected `chrome.storage`; and `el()` in `views.js` threw on its first `dataset` write,
+which killed `renderHistory()`, which rejected `boot()` at step 4 — before step 5, where
+every listener is attached. That last one presented as six unrelated dead controls and was
+invisible to 122 static checks, none of which execute `app.js`.
 
-* Load unpacked; the API-key modal blocks until a key is stored.
-* New chat, open chat, delete chat, rename chat — all against IndexedDB.
+What the browser harness confirms: boot completes, the gate opens and closes, the model
+dropdown populates, history renders with real `data-*` attributes and its rows switch chats,
+the title input follows, delete works, the multi-agent toggle flips, the modal opens and
+cancels, Clear empties the textarea, Send enters its busy state and re-enables, and a
+dropped file is listed. No page errors.
+
+What it does **not** confirm is anything that needs a billable call.
+
+* Load unpacked; the API-key modal blocks until a key is stored. **Confirmed.**
+* New chat, open chat, delete chat, rename chat — all against IndexedDB. **Confirmed.**
 * **Send a prompt and get a streamed answer**, token by token, in the left pane. The
-  prompt and the final answer are both stored in `chat_messages`.
-* Choose the model from the dropdown, or type any OpenRouter model id to override it.
-* Toggle multi-agent mode; the limit input enables and validates at ≥ 1.
+  prompt and the final answer are both stored in `chat_messages`. *The send is confirmed to
+  start, store the prompt and report an outcome; the stream itself is not, for want of a
+  key.*
+* Choose the model from the dropdown, or type any OpenRouter model id to override it. *The
+  dropdown and the hint are confirmed; the effect on a request is not.*
+* Toggle multi-agent mode; the limit input enables and validates at ≥ 1. **Confirmed.**
 * Send with multi-agent on; **every sub-agent makes a real OpenRouter call**, logs its
   result in the centre pane, and leaves the dropdown when it finishes — as does the Main
-  Agent.
+  Agent. *Not observed.*
 * **Ask something the Main Agent cannot answer from memory.** It calls `search_web`,
   follows a result with `read_page`, cites where the facts came from, and renames the chat
-  once it knows the subject. Tool calls log in the centre pane as they run.
-
-What *is* confirmed in Chrome is presentation only: the panes render under the extension's
-own CSP, the composer takes the remaining height, the footer is not overlapped, and the
-label is clear of the textarea.
+  once it knows the subject. Tool calls log in the centre pane as they run. *Not observed.*
 
 ## Limits worth knowing
 
@@ -105,46 +113,39 @@ label is clear of the textarea.
 
 ## What has not been verified
 
-**The extension has been loaded in Chrome three times, and no run has exercised a line of
-application behaviour to completion.** The first reported the CSP violation and the
-right-pane overlap. The second reported the composer label sitting on the textarea and the
-API-key modal never appearing — because `boot()` was defined and never called. The third
-was the first live execution of anything in `app.js`, and it rejected at step 1: the
-manifest declared no `permissions`, so `chrome.storage` was `undefined` and every call
-through it threw. Both are fixed and neither fix has been observed running.
+**The request path. Everything from the port to OpenRouter outward.** The harness seeds a
+placeholder key so `boot()` gets past the gate, which is enough to prove the interface and
+nothing more. Whether OpenRouter accepts these requests or these tool schemas, whether the
+streaming caret behaves over a live stream, whether DuckDuckGo still serves markup the
+parser recognises, and whether Chrome returns a readable `Location` for a
+`redirect: 'manual'` response, which the redirect guard depends on — all unobserved. The
+tool loop has only been driven by scripted SSE bodies.
 
 Every module passes `node --check`, every import and DOM id resolves, no `style` attribute
 or style assignment remains anywhere in `src/`, all 47 classes in `index.html` are defined
 in the stylesheets, `boot()` resolves to an invocation, no top-level function in `app.js`
 is left uncalled, and every `chrome.<api>` used in `src/` has its permission declared or
-needs none. 105 checks run under Node against stubbed `chrome` and `fetch` cover the service
-worker's SSE handling and tool loop, the model settings, the port client, the search parser
-and HTML extraction, the `read_page` guard, the page half of a tool round-trip, the agent
-registry, and the manifest's permissions.
+needs none. **122 checks** run under Node against stubbed `chrome` and `fetch` cover the
+service worker's SSE handling and tool loop, the model settings, the port client, the search
+parser and HTML extraction, the `read_page` guard, the page half of a tool round-trip, the
+agent registry, the manifest's permissions, the `data-*` names `views.js` writes against the
+selectors `app.js` uses, and the boot step labels against the file's own load-order list.
 
-**None of those checks executes `app.js`, and there is no DOM harness that could.** That
-is how a fully written, correct, entirely unreachable `boot()` passed every check in two
-consecutive rounds, and how a manifest with no `permissions` key passed them again. The
-uncalled-function assertion and the permission sweep close those two holes and nothing
-else — both are one-shot checks against a fault that has already been fixed, not a
-standing guard.
-
-Confirmed in Chrome is presentation only: the panes render under the extension's own CSP,
-the composer takes the remaining height, and the footer is not overlapped.
-
-Unverified is everything else — whether it boots past the gate at all, whether OpenRouter
-accepts these requests or these tool schemas, whether the streaming caret behaves over a
-live stream, whether DuckDuckGo still serves markup the parser recognises, and whether
-Chrome returns a readable `Location` for a `redirect: 'manual'` response, which the
-redirect guard depends on. The tool loop has only been driven by scripted SSE bodies.
+**The static suite still cannot execute `app.js`, and that cost three rounds.** A fully
+written, correct, entirely unreachable `boot()` passed every check in two consecutive
+rounds. A manifest with no `permissions` key passed them again. A helper that threw on its
+first element in a strict-mode module passed them a third time. The uncalled-function
+assertion, the permission sweep and the dataset sweep close those three holes and nothing
+else — all three are one-shot checks against faults already fixed, not standing guards, and
+none of them is a substitute for running the thing.
 
 Two layout cases are also still unobserved: the right pane below its 140px composer floor,
 and the layout under 900px, where the responsive rules give `.pane` a `min-height: 260px`
 and the composer asks for more than half of it.
 
-The procedure is in `wiki/environments/setup.md`. That checklist has never been run to the
-end — it was written before the first Chrome run, against an application that turned out
-never to have booted — so expect to find things that are not in it.
+The procedure is in `wiki/environments/setup.md`. Its step 1 has been driven; steps 2–12
+need a real key and have never been run by anyone, so expect to find things that are not
+in the list.
 
 The test scripts live in `/tmp` and are **not committed** — the repository states it has no
 test runner, and adding one was out of scope. They are the obvious first candidate if that
