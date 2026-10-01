@@ -17,10 +17,10 @@ no change to how the API key is stored, read, or passed.
 
 | # | Title | Scope (one line) | Repository | Branch | Files / areas | PR |
 |---|---|---|---|---|---|---|
-| 1 | Task record | This file, written before the work | LXBrowser/chat | `chore/ui-runtime-bugs-plan` | `.agents/memory/tasks/`, `memory-index.md` | |
-| 2 | Write dataset keys properly | `Object.assign` cannot write dataset keys, so history and the agent dropdown are unclickable | LXBrowser/chat | `fix/dataset-attributes` | `src/ui/lib/views.js` | |
-| 3 | Name the failing boot step | A runtime rejection shows a raw message and makes Settings reload | LXBrowser/chat | `fix/boot-step-reporting` | `src/ui/app.js` | |
-| 4 | Release | Changelog, checklist, state, closing entries | LXBrowser/chat | `docs/ui-runtime-bugs-release` | `wiki/`, `.agents/memory/` | |
+| 1 | Task record | This file, written before the work | LXBrowser/chat | `chore/ui-runtime-bugs-plan` | `.agents/memory/tasks/`, `memory-index.md` | #20 |
+| 2 | Write dataset keys properly | `Object.assign` cannot write dataset keys, so history and the agent dropdown are unclickable | LXBrowser/chat | `fix/dataset-attributes` | `src/ui/lib/views.js` | #21 |
+| 3 | Name the failing boot step | A runtime rejection shows a raw message and makes Settings reload | LXBrowser/chat | `fix/boot-step-reporting` | `src/ui/app.js` | #22 |
+| 4 | Release | Changelog, checklist, state, closing entries | LXBrowser/chat | `docs/ui-runtime-bugs-release` | `wiki/`, `.agents/memory/` | #23 |
 
 Task *k* branches from task *k-1*'s branch and targets it. **No task merges on its own.**
 
@@ -196,3 +196,23 @@ the four Chrome runs.
 **The setup checklist's scope is now split.** Step 1 has been driven. Steps 2–12 begin at
 **Send something** and need a billable call, so they have never been run by anyone and are
 labelled as such rather than presented as a passed list.
+
+## Closed
+
+All four merged to `master` as #20, #21, #22 and #23, in that order. The tree on `master`
+is byte-identical to the tip of `docs/ui-runtime-bugs-release`.
+
+**The squash-ancestry trap fired again, and the re-target-first rule prevented the worse
+half of it.** Merging #20 with `--squash` left #21 `CONFLICTING`, exactly as the previous
+stack recorded. Two things were done differently and both helped:
+
+* **No `--delete-branch` on any merge.** In the previous stack that flag auto-closed a PR
+  mid-chain. Every merge here passed `--delete-branch=false`, all four PRs were re-targeted
+  to `master` *by hand* before each merge, and the branches were deleted only at the end.
+* **The rebase was verified by tree diff, not by ancestry.** `merge-base --is-ancestor` is
+  useless after a squash. `git diff origin/master..HEAD` against the rebased branch showed
+  exactly the intended change and nothing else, before every force-push.
+
+The first `git ls-remote` after #23's push hung, and the force-push silently did not land
+— PR #23 was still open against its old base. It was caught by re-reading the PR state
+rather than assuming the command had worked, and re-run in the background.
