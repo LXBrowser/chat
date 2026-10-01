@@ -18,16 +18,35 @@ stays `0.1.0` — and no change to how the API key is stored, read, or passed.
 | # | Title | Scope (one line) | Repository | Branch | Files / areas | PR |
 |---|---|---|---|---|---|---|
 | 1 | Task record | This file, written before the work | LXBrowser/chat | `chore/storage-context-fallback-plan` | `.agents/memory/tasks/`, `memory-index.md` | [#14](https://github.com/LXBrowser/chat/pull/14) |
-| 2 | Storage permission and an honest failure message | The manifest declares no `permissions` at all | LXBrowser/chat | `fix/storage-context-fallback` | `manifest.json`, `src/ui/app.js` | [#15](https://github.com/LXBrowser/chat/pull/15) |
+| 2 | Storage permission and an honest failure message | The manifest declares no `permissions` at all | LXBrowser/chat | `fix/storage-context-fallback` | `manifest.json`, `src/ui/app.js` | [#18](https://github.com/LXBrowser/chat/pull/18) |
 | 3 | Composer label spacing | `gap: 4px` → `6px`, matching `.model` | LXBrowser/chat | `fix/composer-label-spacing` | `src/ui/css/layout.css` | [#16](https://github.com/LXBrowser/chat/pull/16) |
 | 4 | Release | Changelog, checklist, state, closing entries | LXBrowser/chat | `docs/runtime-and-overlap-release` | `wiki/`, `.agents/memory/` | [#17](https://github.com/LXBrowser/chat/pull/17) |
 
 Task *k* branches from task *k-1*'s branch and targets it. **No task merges on its own.**
 
-**This forge does not re-target a stacked pull request when its base is deleted.** The
-previous task record says so, and it was not re-tested: as last time, each request is
-re-targeted by hand *before* the merge above it, and every merge is verified by reading
-`master` afterwards rather than by trusting a request's state.
+**This forge does not re-target a stacked pull request when its base is deleted, and that
+was re-tested here by getting it wrong a second time.** The previous task record warns
+about exactly this, and the warning was written into this file before any of the work — and
+the first merge still used `--delete-branch`, which auto-closed #15 rather than re-targeting
+it. A closed request cannot have its base changed or be reopened, so #15 was replaced by
+**#18**: same branch, same commit, same diff, targeting `master`. #16 and #17 were then
+re-targeted by hand *before* the merges above them, which is what stopped it happening a
+third time.
+
+**The lesson is the ordering, not the flag: re-target by hand first, delete branches at the
+end.** `--delete-branch` on a merge is what breaks the chain here, and it is the one step
+that looks harmless because it is the step the instructions call the default.
+
+**Squash-merging breaks a stacked chain a second way**, and this one cost two more rebases:
+a squash produces a commit that is not the branch tip, so the next branch's base stops being
+an ancestor of the default branch and every request above it reports `CONFLICTING`. Rebasing
+each branch onto `master` after the merge above it — the content diffs, since squash makes
+`merge-base --is-ancestor` useless — is what recovered it.
+
+**Verification is by tree, not by request state and not by ancestry.** The final branch's
+tree is identical to `master`'s, and each intermediate branch differs from `master` only by
+the *later* tasks' files — which is how it is possible to say that no work was lost even
+though no branch is an ancestor of `master`.
 
 ## The finding, recorded before any of the work
 
