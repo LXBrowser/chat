@@ -62,6 +62,9 @@ empty, so the shared set is used unchanged.
   layout is therefore the extension's only surface — there is no second page to link to.
 * Chrome permissions are cumulative and user-visible. Add a permission only in the change
   that uses it; an unused permission is a review finding.
+* An MV3 service worker is terminated when idle, and a single request is capped at roughly
+  five minutes however active the port is. Anything long-running must assume it will be cut,
+  and the page must treat a lost port as an expected event rather than a fault.
 
 ## Conventions the code follows
 
@@ -72,3 +75,12 @@ empty, so the shared set is used unchanged.
 * **Overlays that cover page content are opaque.** Any surface that fully covers content —
   the agent-status dropdown, the API-key modal — uses a solid background and does not rely
   on `backdrop-filter` for legibility. See `.agents/design/overlay-opacity.md`.
+* **The API key never enters the page.** `src/background.js` reads it from
+  `chrome.storage.local` in the worker's own context and puts it in the `Authorization`
+  header. It is never posted over the message port, never written to a file, never logged,
+  and never included in an error message. This is why model calls live in the worker rather
+  than in the page, and moving a call into the page would be a regression, not a
+  simplification.
+* **Every cross-boundary request settles exactly once.** Any request that crosses the port
+  ends in one `done` or one `error` and never both, and never neither. The page's ability
+  to remove an agent from the dropdown depends on that guarantee.

@@ -1,6 +1,6 @@
 ---
 name: memory-state-repository-state
-description: What the repository currently contains at 0.1.0 — the shell that exists, the orchestration that does not, and the next obvious step.
+description: What the repository currently contains at 0.1.0 — the working chat surface, the orchestration that does not, and the next obvious step.
 ---
 
 # Repository state
@@ -25,9 +25,11 @@ here, and the override table in the root index is empty.
 * `.agents/wiki/context/repository-map.md` — orientation page.
 * `.agents/memory/` — this file and the task records.
 * `wiki/` — `information/overview.md`, `environments/setup.md`, `environments/env.md`.
-* `manifest.json` — MV3, new-tab override, no permissions, no service worker.
+* `manifest.json` — MV3, new-tab override, module service worker, one host permission.
+* `src/background.js` — the service worker. Every OpenRouter call, and the only place the
+  API key is read.
 * `src/db.js` — IndexedDB wrapper, three object stores, promisified, FK enforced in code.
-* `src/ui/app.js` — the wiring. Five modules under `src/ui/lib/`.
+* `src/ui/app.js` — the wiring. Six modules under `src/ui/lib/`.
 * `src/ui/index.html` + `src/ui/css/` — the three-pane interface and its styles.
 * `src/ui/icons/icon-128.png` — generated icon.
 * `wiki/logs/0/1/0/CHANGELOG.md` — the only release.
@@ -40,55 +42,73 @@ models.
 
 ## What is not built
 
-The model layer. Concretely:
-
-* **No OpenRouter client.** The key is stored and gated, but nothing calls the API.
-* **No streaming, no synthesis.** A sent prompt is recorded as a user message and nothing
-  answers it yet.
-* **No real sub-agents.** `agents.simulate()` emits canned steps on a timer. It is the
-  seam a real round-trip replaces.
-* **No search tool**, no background fetcher, no HTML scraping.
-* **No `background.js`** — nothing here is cross-origin, so there is nothing for a service
-  worker to do yet. It arrives with the search tool, which brings `host_permissions`.
+* **No synthesis.** Sub-agents answer independently and are logged in the centre pane;
+  nothing combines them into a single response. This was an owner decision for this phase,
+  to keep the token cost and the architecture manageable.
+* **No search tool**, no HTML scraping. `host_permissions` covers OpenRouter only.
+* **No tool use at all.** Neither agent has tools; the Main Agent's system prompt says so
+  explicitly. The search-and-read tool is the next thing, and it arrives through the port
+  protocol that already exists rather than through a new mechanism.
+* **No separate sub-agent models.** The Main Agent and every sub-agent use whichever model
+  the picker is set to.
 * **File attachments are listed, not read.** Files appear in the dropzone; their contents
   are never attached to a message.
+* **No cancel or stop.** A request in flight can only be waited out.
 
 ## What works today
 
 * Load unpacked; the API-key modal blocks until a key is stored.
 * New chat, open chat, delete chat, rename chat — all against IndexedDB.
-* Send a prompt; it is written to `chat_messages` and the transcript updates.
+* **Send a prompt and get a streamed answer**, token by token, in the left pane. The
+  prompt and the final answer are both stored in `chat_messages`.
+* Choose the model from the dropdown, or type any OpenRouter model id to override it.
 * Toggle multi-agent mode; the limit input enables and validates at ≥ 1.
-* Send with multi-agent on; sub-agents appear in the centre dropdown, log as they work,
-  and **leave the dropdown when they finish**.
+* Send with multi-agent on; **every sub-agent makes a real OpenRouter call**, logs its
+  result in the centre pane, and leaves the dropdown when it finishes — as does the Main
+  Agent.
+
+## Limits worth knowing
+
+* **This spends real money.** Every prompt is a billable call, and multi-agent mode is
+  N+1 calls per send.
+* **A single request is capped at roughly five minutes** by Chrome. A very long answer is
+  cut mid-stream and surfaces as an error, not a completion.
+* **The service worker is terminated when idle.** A termination mid-stream loses that
+  request; the port reconnects on the next send.
+* **`deepseek/deepseek-v4-flash` is unverified** — used exactly as the owner gave it, and
+  not confirmed against OpenRouter's catalogue. A bad id fails loudly at request time.
 
 ## What has not been verified
 
 **The extension has never been loaded in a browser.** There is no Chrome in the authoring
-environment. Every module passes `node --check`, every import and DOM id resolves, and the
-agent registry and limit validation were exercised directly under Node. But the DOM path —
-`app.js` boot order, the modal, and the panes rendering — is untested.
+environment. Every module passes `node --check`, every import and DOM id resolves, and 37
+checks run under Node against stubbed `chrome` and `fetch` cover the service worker's SSE
+handling, the model settings, and the port client.
+
+But the DOM path and the real network round-trip are untested: `app.js` boot order, the
+modal, the panes rendering, the streaming caret, and whether OpenRouter accepts these
+requests at all.
 
 The procedure is in `wiki/environments/setup.md`: load unpacked, walk the working list
 above, then run the `db.js` round-trip and its two negative paths from the console.
 
+The test scripts live in `/tmp` and are **not committed** — the repository states it has no
+test runner, and adding one was out of scope. They are the obvious first candidate if that
+changes.
+
 ## Known open item
 
-**`.gitignore` exists but is untracked.** The owner added it during this work, excluding
-`.agents/plans/`, and `git check-ignore` confirms the working plan is now protected in this
-checkout.
-
-It has **not been committed**, so the exclusion does not travel with the repository — a
-fresh clone has no rule and the working plan is one `git add -A` from being published. It
-needs its own commit. The agent does not add it: `plan_creator` reserves `.gitignore` for
-the owner.
+**`deepseek/deepseek-v4-flash` is unverified.** It is in the model picker exactly as the
+owner wrote it and has not been checked against OpenRouter's catalogue. If the id is wrong,
+the failure is loud and specific — the picker still offers the default and a custom field,
+so nothing is a dead end.
 
 Minor divergence from the shared convention: `plan_creator` specifies `/.agents/plans/`
-with a leading slash; the file uses `.agents/plans/`. Functionally equivalent here, since
-there is one such folder.
+with a leading slash; the `.gitignore` uses `.agents/plans/`. Functionally equivalent here,
+since there is one such folder. That file **is** committed.
 
 ## Next obvious step
 
-Wire the logic pass: OpenRouter client and key flow first, since the blocking modal gates
-everything else. Then `app.js` for the three-pane interactions and the dropdown auto-remove,
-then `background.js` and the search tool — which is what brings `host_permissions` with it.
+The search-and-read tool. It is the next thing the product description promises, it is what
+`host_permissions` was scoped around, and it needs no new mechanism: another request type
+over the port the model layer already established, plus a second host permission.

@@ -4,16 +4,22 @@
  * Load order matters and is deliberate:
  *
  *   1. the API-key gate resolves first, so the interface is never usable without a key
- *   2. settings load, then the multi-agent toggle is painted before it is wired
+ *   2. settings load, then the multi-agent toggle and model picker are painted before
+ *      they are wired
  *   3. the database opens and the history list is populated
  *   4. every control gets its listener
  *
  * Modules own their own data: `sessions` owns the database, `agents` owns the agent
- * registry, `views` owns the DOM. This file only connects them.
+ * registry, `views` owns the DOM, `openrouter` owns the port to the service worker. This
+ * file only connects them.
+ *
+ * The OpenRouter call itself happens in `src/background.js`. This page sends a model and a
+ * conversation and receives text back; it never sees the API key.
  */
 
 import * as apiKey from './lib/api-key.js';
 import * as agents from './lib/agents.js';
+import * as openrouter from './lib/openrouter.js';
 import * as sessions from './lib/sessions.js';
 import * as storage from './lib/storage.js';
 import * as views from './lib/views.js';
@@ -24,7 +30,49 @@ const $ = (id) => document.getElementById(id);
 let selectedAgentId = null;
 
 /** Mirrored UI settings, the single source of truth for the right pane. */
-let settings = { multiAgentOn: false, agentLimit: 3 };
+let settings = { multiAgentOn: false, agentLimit: 3, model: '', customModel: '' };
+
+/**
+ * One request at a time through the composer.
+ *
+ * Two concurrent sends would stream two answers into the same transcript. Released in a
+ * `finally`, so a failure cannot leave the interface permanently disabled.
+ */
+let busy = false;
+
+/**
+ * What the composer is currently saying under the send button.
+ *
+ * Held outside the request because `finally` repaints the send state, and a failure
+ * message repainted away in the same tick is a failure the user never sees.
+ */
+let sendNote = '';
+
+// ---------------------------------------------------------------------------
+// Prompts
+// ---------------------------------------------------------------------------
+
+/**
+ * The Main Agent's standing instructions.
+ *
+ * It is given the conversation so far as context and asked for a direct answer, because
+ * there is no synthesis pass — whatever comes back is what the user reads.
+ */
+const MAIN_SYSTEM =
+  'You are the main agent in a chat workspace. Answer the user directly and completely. ' +
+  'You have no tools available. Prefer clear prose over bullet lists unless the user asks ' +
+  'for structure, and do not describe what you are about to do — just do it.';
+
+/**
+ * A sub-agent's standing instructions.
+ *
+ * Each works the prompt independently and answers only that. There is no synthesis step,
+ * so an answer is read in the agent log rather than merged into the transcript.
+ */
+const SUBAGENT_SYSTEM =
+  'You are a sub-agent in a chat workspace. You have been given one task. Answer it ' +
+  'directly and concisely — at most a short paragraph — because your answer is read on its ' +
+  'own, with no other context and no step to combine it with anything else.';
 
 // ---------------------------------------------------------------------------
 // Boot
@@ -38,6 +86,8 @@ async function boot() {
   // 2. Settings.
   settings = await storage.getSettings();
   views.renderMultiAgent(settings);
+  views.renderModel(settings);
+  views.renderSendState({ busy });
 
   // 3. Database. A first run has no sessions, so one is created rather than showing
   //    an empty pane the user has no obvious way out of.
@@ -49,6 +99,7 @@ async function boot() {
   wireAgents();
   wireComposer();
   wireMultiAgent();
+  wireModel();
 
   // The registry is the source of truth for the dropdown, so one subscription drives
   // both the list and the log — there is no separate "agent finished" path to forget.
@@ -155,20 +206,54 @@ function wireComposer() {
 
   const send = async () => {
     const content = prompt.value.trim();
-    if (!content) return;
+    if (!content || busy) return;
 
-    // Derive a title from the first prompt, so the history list is not a column of
-    // "New Chat". Only if the title has not been set deliberately.
-    const session = await sessions.getCurrent();
-    if (session && session.title === 'New Chat') {
-      const derived = content.slice(0, 60);
-      await sessions.renameCurrent(derived);
+    busy = true;
+    sendNote = 'Calling OpenRouter…';
+    views.renderSendState({ busy, note: sendNote });
+
+    try {
+      // Derive a title from the first prompt, so the history list is not a column of
+      // "New Chat". Only if the title has not been set deliberately.
+      const session = await sessions.getCurrent();
+      if (session && session.title === 'New Chat') {
+        await sessions.renameCurrent(content.slice(0, 60));
+      }
+
+      prompt.value = '';
+
+      // Recorded before the request, so the context sent back to the model includes the
+      // turn being answered — and so an interrupted answer still leaves the prompt in
+      // the history.
+      await sessions.appendMessage('user', content);
+
+      const history = await conversationContext();
+
+      // Sub-agents run alongside the Main Agent, not before it. Their failures are logged
+      // in their own agents, so this only rejects if the fan-out itself cannot be built —
+      // caught here so it cannot surface as an unhandled rejection while the Main Agent is
+      // still streaming.
+      const subAgents = settings.multiAgentOn
+        ? delegate(content, history).catch((err) => {
+            console.error('Sub-agent fan-out failed:', err.message);
+          })
+        : Promise.resolve();
+
+      await runMainAgent(history);
+      await subAgents;
+
+      // Cleared only on the way through: a failure leaves its message showing.
+      sendNote = '';
+    } catch (err) {
+      // A failure here means the prompt could not even be sent — a missing key, a closed
+      // database, no extension context. Failures inside an agent are reported in its log.
+      sendNote = err.message;
+      console.error('Send failed:', err.message);
+    } finally {
+      busy = false;
+      views.renderSendState({ busy, note: sendNote });
+      prompt.focus();
     }
-
-    prompt.value = '';
-    await sessions.appendMessage('user', content);
-
-    if (settings.multiAgentOn) await delegate(content);
   };
 
   $('send-btn').addEventListener('click', send);
@@ -250,7 +335,7 @@ function wireComposer() {
 }
 
 // ---------------------------------------------------------------------------
-// Right pane — multi-agent toggle
+// Right pane — multi-agent toggle and model picker
 // ---------------------------------------------------------------------------
 
 function wireMultiAgent() {
@@ -270,31 +355,148 @@ function wireMultiAgent() {
   });
 }
 
-/**
- * Fans a prompt out across sub-agents, up to the configured cap.
- *
- * This is the mock the centre pane observes: agents appear in the dropdown, log as they
- * work, and leave it when they finish. It replaces an OpenRouter round-trip in the next
- * phase.
- */
-async function delegate(prompt) {
-  const cap = settings.agentLimit;
-  const names = ['Researcher', 'Coder', 'Critic', 'Summarizer', 'Planner', 'Tester'];
+function wireModel() {
+  const select = $('model-select');
+  const custom = $('model-custom');
 
-  for (let i = 0; i < cap; i += 1) {
-    const agent = agents.spawn({
-      name: `${names[i % names.length]} ${i + 1}`,
-      task: prompt.slice(0, 40),
+  const save = async () => {
+    settings = await storage.saveSettings({
+      model: select.value,
+      customModel: custom.value,
     });
-    agents.simulate(agent.id, { intervalMs: 700 + i * 250 });
-  }
+    views.renderModel(settings);
+  };
+
+  select.addEventListener('change', save);
+  // Saved on change rather than per keystroke, but before blur is missed: the custom
+  // field is typed into and then clicked away from without ever firing `change` in
+  // some flows.
+  custom.addEventListener('change', save);
+  custom.addEventListener('blur', save);
 }
 
 // ---------------------------------------------------------------------------
+// Running agents
+// ---------------------------------------------------------------------------
 
-boot().catch((err) => {
-  // The API-key gate is the one rejection that reaches here: the user cancelled.
-  console.error(err.message);
-  document.getElementById('prompt').disabled = true;
-  document.getElementById('send-btn').disabled = true;
-});
+/**
+ * The conversation so far, in the shape OpenRouter expects.
+ *
+ * Read after the new prompt is stored, so the turn being answered is included. Empty
+ * content is dropped rather than sent: some providers reject an empty message outright.
+ */
+async function conversationContext() {
+  const messages = await sessions.listMessages();
+  return messages
+    .filter((m) => m.content && m.content.trim())
+    .map((m) => ({ role: m.role, content: m.content }));
+}
+
+/**
+ * Runs the Main Agent: one streamed answer, saved and shown.
+ *
+ * It is a registry agent like any other, so it appears in the centre dropdown while it
+ * works and leaves it when it finishes. That is the whole of the "active until complete"
+ * behaviour — the registry already guarantees it.
+ */
+async function runMainAgent(history) {
+  const model = storage.effectiveModel(settings);
+  const agent = agents.spawn({ name: 'Main Agent', task: summarise(history) });
+
+  const handle = views.startStream();
+  agents.log(agent.id, `▸ ${model}`);
+
+  try {
+    const answer = await openrouter.chat({
+      model,
+      system: MAIN_SYSTEM,
+      messages: history,
+      onDelta: (delta) => views.pushDelta(handle, delta),
+    });
+
+    // Checked before the agent finishes: an empty answer is a failure, and reporting it
+    // after `finish` would find the agent already out of the active list, so nothing
+    // would be logged.
+    if (!answer.trim()) throw new Error('The model returned an empty answer.');
+
+    agents.finish(agent.id, summariseAnswer(answer));
+
+    // Before the write, not after: storing repaints the transcript from the database, and
+    // the streamed copy has to be gone before that repaint or the answer appears twice.
+    views.discardStream();
+    await sessions.appendMessage('assistant', answer);
+  } catch (err) {
+    agents.fail(agent.id, err.message);
+    // Nothing was stored, so whatever arrived stays on screen — a partial answer is still
+    // more use than an empty bubble.
+    views.endStream();
+  }
+}
+
+/**
+ * Fans a prompt out across sub-agents, up to the configured cap.
+ *
+ * Each is a real OpenRouter request with its own answer, logged when it finishes. There
+ * is no synthesis step: their results are not written to the transcript and are read in
+ * the centre pane.
+ *
+ * @returns {Promise<void>} resolves when every sub-agent has settled — each settles on
+ * its own, so one failure never takes the others down.
+ */
+async function delegate(prompt, history) {
+  const model = storage.effectiveModel(settings);
+  const cap = storage.normaliseLimit(settings.agentLimit);
+  const names = ['Researcher', 'Coder', 'Critic', 'Summarizer', 'Planner', 'Tester'];
+
+  // Each sub-agent gets the prompt as its own single-turn task. Sending the whole
+  // conversation would have them each re-answer what the Main Agent is already doing.
+  const messages = [{ role: 'user', content: prompt }];
+
+  await Promise.all(
+    Array.from({ length: cap }, (_, i) =>
+      runSubAgent({
+        name: `${names[i % names.length]} ${i + 1}`,
+        prompt,
+        messages,
+        model,
+      }),
+    ),
+  );
+}
+
+/**
+ * One sub-agent, start to finish.
+ *
+ * Never rejects: a failure is the agent's own log line, because a sub-agent that failed
+ * is information, not an error in the page.
+ */
+async function runSubAgent({ name, prompt, messages, model }) {
+  const agent = agents.spawn({ name, task: prompt.slice(0, 40) });
+  agents.log(agent.id, `▸ ${model}`);
+
+  try {
+    const answer = await openrouter.chat({
+      model,
+      system: SUBAGENT_SYSTEM,
+      messages,
+    });
+
+    agents.log(agent.id, `· ${answer.length} characters`);
+    agents.finish(agent.id, summariseAnswer(answer));
+  } catch (err) {
+    agents.fail(agent.id, err.message);
+  }
+}
+
+/** Puts something short and readable in the dropdown's task chip. */
+function summarise(history) {
+  const last = history[history.length - 1];
+  return last ? last.content.slice(0, 40) : '';
+}
+
+/** A one-line summary for the finish message, so the log ends with something readable. */
+function summariseAnswer(answer) {
+  const clean = String(answer ?? '').replace(/\s+/g, ' ').trim();
+  if (!clean) return 'no answer';
+  return clean.length > 120 ? `${clean.slice(0, 117)}…` : clean;
+}

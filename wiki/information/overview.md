@@ -34,25 +34,31 @@ built-in search-and-read tool, and keep every conversation in local storage.
 
 ## Current state
 
-`0.1.0` has a **working interface over no model**. What you can do today:
+`0.1.0` chats for real. What you can do today:
 
 * load it unpacked; an API-key modal blocks the app until a key is stored
 * start, open, rename, and delete chats — all stored locally in IndexedDB
-* send a prompt; it is recorded and the transcript updates
-* switch multi-agent mode on, set a cap, and send — sub-agents appear in the centre
-  dropdown, log as they work, and **leave the list the moment they finish**
+* **send a prompt and watch the answer arrive word by word**; the prompt and the answer are
+  both saved to the chat
+* pick a model from the dropdown, or type any OpenRouter model id to override it
+* switch multi-agent mode on, set a cap, and send — every sub-agent makes its own request,
+  logs its answer in the centre pane, and **leaves the list the moment it finishes**
 
 What does not exist yet:
 
-* **no OpenRouter client** — the key is stored, but nothing calls the API, so a sent
-  prompt is never answered
-* **no real sub-agents** — they run on a timer through canned steps
-* **no search tool** and no background fetcher
+* **no synthesis** — sub-agents answer independently and are logged; nothing merges them
+  into one response
+* **no search tool** — neither agent can fetch anything
+* **no cancel** — a request in flight can only be waited out
 * **file attachments are listed, not read** — files appear in the dropzone but are never
   attached to a message
+
+## Cost
+
+Every prompt is a billable OpenRouter call, and multi-agent mode is one call for the main
+agent plus one per sub-agent. Point it at a cheap model while you are trying things.
 
 ## Next steps
 
 1. Load the extension unpacked — see [Setup](../environments/setup.md).
-2. Walk the checklist there to confirm the interface behaves before any of the above is
-   built on top of it.
+2. Walk the checklist there to confirm it behaves before anything is built on top of it.
