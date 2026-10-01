@@ -28,10 +28,13 @@ src/
   db.js                IndexedDB wrapper. Three object stores, promisified.
   ui/
     index.html         The three panes, the key modal, the settings surface.
+    app.js             NOT YET WRITTEN. index.html ends with a comment marking
+                       where its <script type="module"> tag goes.
+    icons/             Extension icon, referenced from the manifest.
     css/
       tokens.css       Design tokens, lifted verbatim from the design system.
       layout.css       Three-pane floating grid, independent scroll.
-      components.css   Shared components.
+      components.css   Shared components, plus the two opaque overlays.
 .agents/               Local instruction set. Routed from index/root-index.md.
   index/               Six scope indexes. Nothing else lives here.
   rules/               Rules true only for this repository.

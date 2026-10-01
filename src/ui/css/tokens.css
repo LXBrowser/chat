@@ -1,0 +1,67 @@
+/* ===========================================================================
+   tokens.css — Silver Glass design tokens
+   Source: .agents/design/tokens-palette.md, tokens-glass.md, tokens-geometry.md
+   Values are lifted VERBATIM. Do not rename a token or change a value here —
+   change the design system and re-copy, so the docs site and the extension
+   cannot drift apart.
+   =========================================================================== */
+
+:root {
+  /* --- White and silver ------------------------------------------------- */
+  --white: #ffffff;
+  --silver-050: #f6f8fb;
+  --silver-100: #eef1f6;
+  --silver-200: #e2e7ee;
+  --silver-300: #d2d9e3;
+  --silver-400: #b9c2d0;
+  --silver-500: #9aa6b8;
+  --silver-600: #78859a;
+
+  /* --- Ink — text ------------------------------------------------------- */
+  --ink-900: #1b2430;
+  --ink-700: #333f4f;
+  --ink-500: #5a6676;
+  --ink-400: #78859a;
+
+  /* --- Accent ----------------------------------------------------------- */
+  --accent: #5b7189;
+  --accent-strong: #3f5872;
+  --accent-soft: rgba(91, 113, 137, .12);
+  --sponsor: #d6336c;
+  --sponsor-soft: rgba(214, 51, 108, .10);
+
+  /* --- Intent ----------------------------------------------------------- */
+  --ok: #1f7a54;
+  --ok-soft: rgba(31, 122, 84, .12);
+  --warn: #9a6b16;
+  --warn-soft: rgba(154, 107, 22, .12);
+
+  /* --- Transparent glass surfaces --------------------------------------- */
+  --glass: rgba(255, 255, 255, .62);
+  --glass-strong: rgba(255, 255, 255, .90);
+  --glass-faint: rgba(255, 255, 255, .40);
+  --glass-border: rgba(255, 255, 255, .75);
+  --hairline: rgba(120, 133, 154, .28);
+  --surface-solid: rgba(255, 255, 255, .98);
+  --blur: saturate(160%) blur(14px);
+
+  /* --- Shadows, geometry, type ------------------------------------------ */
+  --shadow-sm: 0 1px 2px rgba(27, 36, 48, .06), 0 2px 8px rgba(27, 36, 48, .05);
+  --shadow-md: 0 6px 22px rgba(27, 36, 48, .10);
+  --shadow-lg: 0 18px 48px rgba(27, 36, 48, .16);
+  --radius-sm: 10px;
+  --radius: 16px;
+  --radius-lg: 22px;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+
+  /* --- Pane layout ------------------------------------------------------ */
+  /* The extension has no scrolling document: three fixed panes, each scrolling
+     inside itself. See .agents/design/extension-adaptation.md — --maxw and
+     .container do not apply to a full-viewport app grid. */
+  --pane-left: 300px;
+  --pane-center: 1fr;
+  --pane-right: 380px;
+  --pane-gap: 14px;
+  --pane-inset: 14px;
+}

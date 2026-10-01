@@ -39,7 +39,7 @@ extension card at `chrome://extensions` after every change, then reopen the new 
 With the new-tab page open, open the DevTools console and run:
 
 ```js
-const db = await import('./db.js');
+const db = await import('../db.js');   // db.js is one directory up, from src/ui/
 const s = await db.createSession();
 await db.addMessage(s.id, 'user', 'hello');
 await db.listMessages(s.id);   // one row, message_index 0
@@ -53,6 +53,9 @@ The negative paths should reject rather than silently corrupt:
 await db.addMessage('no-such-session', 'user', 'x');   // rejects
 await db.saveInstruction('Bad_ID', 'x');               // rejects on the id rule
 ```
+
+`await` at the top level needs the console in module-await mode, which DevTools has
+enabled by default. If it complains, wrap the block in an async IIFE.
 
 ## Getting the API key
 

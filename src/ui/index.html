@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>@lxbrowser/chat</title>
+
+  <!-- Layered CSS, in order: tokens → layout → components. No page-specific
+       file: nothing on this page needs a layout the components cannot express.
+       See .agents/design/css-organization.md. -->
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     Blocking OpenRouter key modal.
+     Present but hidden. app.js shows it when no key is stored; nothing else in
+     the app runs until one is. OPAQUE per overlay-opacity.md.
+     ══════════════════════════════════════════════════════════════════ -->
+<div class="modal" id="api-key-modal" hidden role="dialog" aria-modal="true"
+     aria-labelledby="api-key-title">
+  <div class="modal__scrim"></div>
+  <div class="modal__panel">
+    <p class="eyebrow">One-time setup</p>
+    <h1 class="modal__title" id="api-key-title">Connect OpenRouter</h1>
+    <p class="lead">
+      This extension talks to OpenRouter. Paste a key to continue — it is stored in
+      <code>chrome.storage.local</code> in this browser and is never sent anywhere else.
+    </p>
+
+    <label class="eyebrow" for="api-key-input">API key</label>
+    <input class="modal__input" id="api-key-input" type="password"
+           placeholder="sk-or-v1-…" autocomplete="off" spellcheck="false">
+
+    <p class="modal__error" id="api-key-error" role="alert"></p>
+
+    <div class="modal__actions">
+      <button class="btn" type="button" data-action="cancel-key">Cancel</button>
+      <button class="btn btn--primary" type="button" data-action="save-key">Save key</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     The workspace — three floating, independently scrollable panes.
+     ══════════════════════════════════════════════════════════════════ -->
+<main class="workspace">
+
+  <!-- ── LEFT: response + chat history ───────────────────────────────── -->
+  <section class="pane" aria-labelledby="left-pane-title">
+
+    <header class="pane__head">
+      <h2 class="pane__title" id="left-pane-title">Conversation</h2>
+      <button class="btn" type="button" data-action="new-chat">New chat</button>
+    </header>
+
+    <div class="pane__body" id="transcript-pane">
+      <nav class="history" id="history" aria-label="Chat history"></nav>
+
+      <!-- Rendered by app.js from chat_messages. -->
+      <div class="transcript" id="transcript" aria-live="polite">
+        <div class="empty" id="transcript-empty">
+          <p>No messages yet.</p>
+          <p class="lead">Write a prompt on the right and send it.</p>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ── CENTRE: agent status monitor ───────────────────────────────── -->
+  <section class="pane" aria-labelledby="center-pane-title">
+
+    <header class="pane__head">
+      <h2 class="pane__title" id="center-pane-title">Agents</h2>
+      <span class="badge" id="agent-count-badge">0 running</span>
+    </header>
+
+    <div class="pane__body">
+
+      <!-- Select and monitor one sub-agent.
+           OPAQUE menu per overlay-opacity.md — it sits over the log below. -->
+      <div class="agent-select" id="agent-select">
+        <button class="agent-select__trigger" type="button" id="agent-select-trigger"
+                aria-haspopup="listbox" aria-expanded="false" aria-controls="agent-select-menu">
+          No agent selected
+        </button>
+        <ul class="agent-select__menu" id="agent-select-menu" role="listbox" hidden
+            aria-label="Active sub-agents"></ul>
+      </div>
+
+      <p class="eyebrow" id="agent-status-line" style="margin-top:14px">Live log</p>
+      <pre class="log" id="agent-log" aria-live="polite">Waiting for an agent.</pre>
+
+      <div class="callout" id="agent-empty-callout" style="margin-top:14px">
+        <span class="callout__icon" aria-hidden="true">i</span>
+        <span>
+          Sub-agents appear here while they run and <strong>leave the list as soon as they
+          finish</strong> — the dropdown only ever shows what is currently active.
+        </span>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── RIGHT: input and context ──────────────────────────────────── -->
+  <section class="pane" aria-labelledby="right-pane-title">
+
+    <header class="pane__head">
+      <h2 class="pane__title" id="right-pane-title">Compose</h2>
+      <button class="btn" type="button" data-action="open-settings">Settings</button>
+    </header>
+
+    <div class="pane__body" style="display:flex;flex-direction:column;gap:12px;">
+
+      <!-- Chat title — writes chat_sessions.title. The built-in title tool. -->
+      <div class="titlebar">
+        <label class="eyebrow" for="chat-title" style="margin:0">Title</label>
+        <input class="titlebar__input" id="chat-title" type="text" maxlength="255"
+               placeholder="New Chat" aria-describedby="title-saved">
+        <span class="titlebar__saved" id="title-saved" aria-live="polite">Saved</span>
+      </div>
+
+      <!-- Multi-agent mode: toggle + agent cap. -->
+      <div class="multiagent">
+        <button class="btn" type="button" id="multiagent-toggle"
+                aria-pressed="false" data-on="false">
+          <span class="dot" id="multiagent-dot" aria-hidden="true"></span>
+          <span id="multiagent-label">Multi-agent OFF</span>
+        </button>
+        <label class="eyebrow" for="agent-limit" style="margin:0">Max agents</label>
+        <input class="multiagent__count" id="agent-limit" type="number" min="1" value="3"
+               inputmode="numeric" aria-describedby="agent-limit-hint">
+      </div>
+      <p class="lead" id="agent-limit-hint" style="font-size:12px">
+        Sub-agents run concurrently, up to this cap.
+      </p>
+
+      <!-- File import + drag and drop. -->
+      <div class="dropzone" id="dropzone" tabindex="0" role="button"
+           aria-label="Add files by clicking to browse, or by dropping them here">
+        <strong>Drop files here</strong> or click to browse
+        <ul class="dropzone__list" id="file-list"></ul>
+      </div>
+      <input type="file" id="file-input" multiple hidden>
+
+      <!-- Prompt. -->
+      <div class="composer">
+        <label class="eyebrow" for="prompt" style="margin:0">Your prompt</label>
+        <textarea class="composer__input" id="prompt" placeholder="Ask the main agent…"
+                  aria-describedby="prompt-hint"></textarea>
+        <p class="lead" id="prompt-hint" style="font-size:12px">
+          <kbd>Ctrl</kbd>+<kbd>Enter</kbd> to send.
+        </p>
+      </div>
+
+    </div>
+
+    <footer class="pane__foot btn-row">
+      <button class="btn btn--primary" type="button" data-action="send" id="send-btn">
+        Send
+      </button>
+      <button class="btn" type="button" data-action="clear-composer">Clear</button>
+    </footer>
+
+  </section>
+
+</main>
+
+<!-- ══════════════════════════════════════════════════════════════════════
+     app.js lands with the logic pass, imported from here as:
+
+         <script type="module" src="app.js"></script>
+
+     It owns: the API-key gate, loading and rendering sessions, the
+     composer, the agent dropdown and its auto-remove, and file import.
+     Until then every control above is inert by design.
+
+     The database layer is src/db.js — one directory up from this page, so
+     the console import path is '../db.js'.
+     ══════════════════════════════════════════════════════════════════ -->
+</body>
+</html>

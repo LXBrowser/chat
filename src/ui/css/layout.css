@@ -1,0 +1,371 @@
+/* ===========================================================================
+   layout.css — the three-pane floating grid and its chrome
+   Source: .agents/design/layout-chrome.md, glass-surface-recipe.md
+   =========================================================================== */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font);
+  color: var(--ink-700);
+  font-size: 14px;
+  line-height: 1.55;
+  /* The fixed silver gradient. Content scrolls over it, not with it, so the
+     glass blur reads as depth. */
+  background: linear-gradient(160deg, #eef1f6 0%, #dbe1ea 100%);
+  background-attachment: fixed;
+  /* No horizontal scroll on the document. Wide content scrolls in its own
+     container — see .table-wrap below. */
+  overflow: hidden;
+}
+
+h1, h2, h3, h4 {
+  margin: 0;
+  color: var(--ink-900);
+  line-height: 1.25;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* --- The grid ----------------------------------------------------------- */
+
+.workspace {
+  display: grid;
+  grid-template-columns: var(--pane-left) var(--pane-center) var(--pane-right);
+  gap: var(--pane-gap);
+  height: 100vh;
+  padding: var(--pane-inset);
+}
+
+.pane {
+  /* The glass recipe, verbatim. All three panes sit over the fixed backdrop,
+     never over other content — which is what qualifies them for it. */
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-sm);
+  border-radius: var(--radius);
+
+  display: flex;
+  flex-direction: column;
+  min-height: 0;      /* lets the child scroll instead of the pane growing */
+  overflow: hidden;
+}
+
+.pane__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--hairline);
+  flex: none;
+}
+
+.pane__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-900);
+}
+
+.pane__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;   /* each pane scrolls independently */
+  overflow-x: hidden;
+  padding: 14px 16px;
+}
+
+.pane__foot {
+  flex: none;
+  padding: 12px 16px;
+  border-top: 1px solid var(--hairline);
+  background: var(--glass-faint);
+  border-radius: 0 0 var(--radius) var(--radius);
+}
+
+/* --- Wide content scrolls inside its own container ---------------------- */
+
+.table-wrap {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+/* --- Chat history sidebar (left pane) ----------------------------------- */
+
+.history {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.history__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 11px;
+  text-align: left;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: var(--glass-faint);
+  color: var(--ink-700);
+  font: inherit;
+  cursor: pointer;
+  transition: background-color .15s ease, transform .15s ease;
+}
+
+.history__item:hover {
+  background: var(--accent-soft);
+  transform: translateY(-2px);
+}
+
+.history__item.is-active {
+  background: var(--accent-soft);
+  border-color: var(--hairline);
+  color: var(--ink-900);
+  font-weight: 600;
+}
+
+.history__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history__del {
+  flex: none;
+  border: 0;
+  background: none;
+  color: var(--ink-400);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.history__del:hover {
+  color: var(--sponsor);
+}
+
+/* --- Transcript (left pane) --------------------------------------------- */
+
+.transcript {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.msg {
+  padding: 11px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--hairline);
+  background: var(--glass-faint);
+}
+
+.msg--user {
+  background: var(--accent-soft);
+}
+
+.msg__role {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--ink-400);
+}
+
+.msg__body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* --- Agent log stream (centre pane) ------------------------------------- */
+
+.log {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: #1c2431;             /* the dark `pre` treatment, not glass —
+                                      see extension-adaptation.md */
+  color: #e2e7ee;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 100%;
+}
+
+/* --- Composer (right pane) ---------------------------------------------- */
+
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 100%;
+  min-height: 0;
+}
+
+.composer__input {
+  flex: 1 1 auto;
+  min-height: 120px;
+  resize: none;
+  width: 100%;
+  padding: 11px 13px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--surface-solid);
+  color: var(--ink-900);
+  font: inherit;
+}
+
+.composer__input:focus-visible {
+  border-color: var(--accent);
+}
+
+.dropzone {
+  flex: none;
+  padding: 14px;
+  text-align: center;
+  border: 1.5px dashed var(--silver-400);
+  border-radius: var(--radius-sm);
+  background: var(--glass-faint);
+  color: var(--ink-500);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color .15s ease, background-color .15s ease;
+}
+
+.dropzone:hover,
+.dropzone.is-over {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--ink-900);
+}
+
+.dropzone__list {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dropzone__file {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-solid);
+  border: 1px solid var(--hairline);
+  font-size: 11px;
+}
+
+/* --- Chat title editor --------------------------------------------------- */
+
+.titlebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.titlebar__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--surface-solid);
+  color: var(--ink-900);
+  font: inherit;
+  font-weight: 600;
+}
+
+.titlebar__saved {
+  font-size: 11px;
+  color: var(--ok);
+  opacity: 0;
+  transition: opacity .2s ease;
+}
+
+.titlebar__saved.is-visible {
+  opacity: 1;
+}
+
+/* --- Multi-agent toggle -------------------------------------------------- */
+
+.multiagent {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+}
+
+.multiagent__count {
+  width: 64px;
+  padding: 6px 9px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--surface-solid);
+  color: var(--ink-900);
+  font: inherit;
+}
+
+/* --- Empty states -------------------------------------------------------- */
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 100%;
+  min-height: 120px;
+  text-align: center;
+  color: var(--ink-400);
+  font-size: 13px;
+}
+
+/* --- Responsive ---------------------------------------------------------- */
+/* The extension owns the whole tab, so below 900px the grid stacks and each
+   pane still scrolls inside itself. */
+
+@media (max-width: 900px) {
+  .workspace {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr auto;
+    height: auto;
+    min-height: 100vh;
+    overflow-y: auto;
+  }
+
+  .pane {
+    min-height: 260px;
+  }
+
+  :root {
+    --pane-right: 1fr;
+  }
+}
