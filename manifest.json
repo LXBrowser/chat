@@ -12,7 +12,9 @@
   },
 
   "host_permissions": [
-    "https://openrouter.ai/*"
+    "https://openrouter.ai/*",
+    "https://html.duckduckgo.com/*",
+    "https://*/*"
   ],
 
   "chrome_url_overrides": {

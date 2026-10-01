@@ -15,8 +15,8 @@ dependencies. IndexedDB holds chat history and agent settings. Model access goes
 OpenRouter.
 
 At version `0.1.0` the chat surface works end to end: prompts go to OpenRouter, answers
-stream back, and both are stored. The search-and-read tool and any synthesis across
-sub-agents do not exist.
+stream back, both are stored, and the Main Agent can search the web, read what it finds,
+and rename the chat. Synthesis across sub-agents does not exist.
 
 ## Layout
 
@@ -26,8 +26,11 @@ LICENSE                MIT, © 2026 LXBrowser
 README.md              Overview only.
 manifest.json          MV3 manifest. New tab → src/ui/index.html.
 src/
-  background.js        The service worker. Every OpenRouter call,
-                       and the only place the API key is read.
+  background.js        The service worker. Every OpenRouter call, the
+                       tool loop, and the only place the API key is read.
+  tools.js             Tool schemas, plus the network tools the worker runs.
+  prompts/
+    system-instructions.md   The Main Agent's operating manual. Bundled.
   db.js                IndexedDB wrapper. Three object stores, promisified.
   ui/
     index.html         The three panes, the key modal, the settings surface.
@@ -41,6 +44,8 @@ src/
       api-key.js       The blocking key gate.
       openrouter.js    Port client for the service worker.
                        Never sees the API key.
+      instructions.js  Seeds and reads the Main Agent's system prompt.
+      page-tools.js    Tools that need the page — update_chat_title.
     icons/             Extension icon, referenced from the manifest.
     css/
       tokens.css       Design tokens, lifted verbatim from the design system.
@@ -64,6 +69,8 @@ wiki/                  Human-facing documentation. No frontmatter.
 |---|---|
 | The running page | `src/ui/index.html`, reached only through the new-tab override |
 | Model calls | `src/background.js` — the page cannot call OpenRouter at all |
+| Tools | `src/tools.js` declares them; the worker runs the network ones, `src/ui/lib/page-tools.js` runs `update_chat_title` |
+| System prompt | `src/prompts/system-instructions.md`, seeded into `agent_instructions` on first run |
 | Database layer | `src/db.js` — every page imports it, nothing else opens a store |
 | Manifest | `manifest.json` — Chrome loads this from the repository root |
 | Instruction routing | `AGENTS.md` → `.agents/index/root-index.md` |
@@ -96,8 +103,15 @@ the snippet is in
   origin. Always load unpacked and use the new tab.
 * **The `chat_messages.session_id` constraint is not in the schema.** IndexedDB has no
   foreign keys; the wrapper checks. Calling a store directly bypasses it.
-* **The manifest has exactly one host permission**, `https://openrouter.ai/*`. The
-  search-and-read tool will add its own; nothing has been pre-declared for it.
+* **The manifest grants `https://*/*`.** It is deliberate and it is broad — `read_page`
+  follows search results to hosts that cannot be enumerated in advance. The guards are in
+  the tool, not in the permission.
+* **Tools are split by where they can run.** A tool that only fetches goes in
+  `src/tools.js` and the worker runs it; a tool that touches the interface goes in
+  `src/ui/lib/page-tools.js` and reaches the worker over the port. Adding one of either
+  kind needs no change to `background.js`.
+* **`parseSearchResults` reads third-party HTML with no API contract.** It is the most
+  likely thing here to break silently. If search returns nothing, look there first.
 * **The service worker is terminated when idle**, which is what closes the page's port.
   The client reconnects on the next request, so this is invisible except that a request
   already in flight is lost.

@@ -19,7 +19,9 @@ built-in search-and-read tool, and keep every conversation in local storage.
 * **Local storage.** Conversations live in IndexedDB in your browser. Nothing leaves the
   machine except the prompts you send and the pages the search tool fetches.
 * **Search and read.** The main agent can search the web and pull the readable text off a
-  result page.
+  result page, and it renames the chat once it knows what the conversation is about.
+* **A system prompt you can read.** The Main Agent's operating manual ships in the bundle
+  and is stored in `agent_instructions` on first run.
 
 ## Stack
 
@@ -43,20 +45,27 @@ built-in search-and-read tool, and keep every conversation in local storage.
 * pick a model from the dropdown, or type any OpenRouter model id to override it
 * switch multi-agent mode on, set a cap, and send — every sub-agent makes its own request,
   logs its answer in the centre pane, and **leaves the list the moment it finishes**
+* **ask something the model cannot answer from memory** and it will search, read a result,
+  and say where the facts came from. Tool calls appear in the centre pane as they run.
+* **have the chat rename itself** once the main agent knows what the conversation is about
 
 What does not exist yet:
 
 * **no synthesis** — sub-agents answer independently and are logged; nothing merges them
   into one response
-* **no search tool** — neither agent can fetch anything
+* **tools are for the main agent only** — sub-agents answer from what they were given and
+  cannot search
 * **no cancel** — a request in flight can only be waited out
+* **the search parser reads third-party HTML** — it has no API contract behind it and is
+  the most likely thing to break; see [Environment](../environments/env.md)
 * **file attachments are listed, not read** — files appear in the dropzone but are never
   attached to a message
 
 ## Cost
 
 Every prompt is a billable OpenRouter call, and multi-agent mode is one call for the main
-agent plus one per sub-agent. Point it at a cheap model while you are trying things.
+agent plus one per sub-agent. A prompt that uses tools is several calls for the main agent
+alone — one per round. Point it at a cheap model while you are trying things.
 
 ## Next steps
 

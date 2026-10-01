@@ -62,20 +62,53 @@ any OpenRouter `{platform}/{model}` id and it is sent instead.
 There is no settings surface for choosing the Main Agent and sub-agents *separately*: both
 use the selected model.
 
-## Permissions
+## Outbound requests
 
-The manifest declares one host permission and no API permissions:
+The service worker is the only thing that makes cross-origin requests. It has three kinds,
+and they need different hosts granted:
+
+| Request | Host permission | Why it can be narrow |
+|---|---|---|
+| Model completions | `https://openrouter.ai/*` | One known API. |
+| Web search | `https://html.duckduckgo.com/*` | One known search endpoint. |
+| Reading a page | `https://*/*` | The URL comes from search results, so it cannot be enumerated in advance. |
 
 ```json
-"host_permissions": ["https://openrouter.ai/*"]
+"host_permissions": [
+  "https://openrouter.ai/*",
+  "https://html.duckduckgo.com/*",
+  "https://*/*"
+]
 ```
 
-That is the minimum the model layer needs, and it is why the service worker exists — the
-worker makes the cross-origin request so the page never has to. No `activeTab`, no
-`tabs`, no `scripting`, no `<all_urls>`.
+No API permissions — no `activeTab`, no `tabs`, no `scripting`.
 
-The search-and-read tool will need `host_permissions` for the URLs it fetches. Those
-arrive with that tool.
+### `https://*/*` is a broad grant
+
+The third permission is the one to look at before loading the extension. It lets the
+worker fetch **any https URL the model names** — which means any URL a web page managed to
+put in front of the model, including one crafted to look like an internal host. Chrome will
+warn about this at install time. It is granted deliberately, because `read_page` is
+useless without it, but the safeguards live in the tool rather than in the permission:
+
+* **https only.** Other schemes are refused before the fetch.
+* **Local addresses are refused** — `localhost`, `127.0.0.0/8`, `10.0.0.0/8`,
+  `192.168.0.0/16`, `172.16.0.0/12`, `.local`, `::1`, `0.0.0.0`. Without this, "fetch
+  whatever the agent asks for" becomes "reach the machine the browser is running on".
+* **Downloads are bounded** — 5 MB by content-length, before the body is read.
+* **Only text is returned** — a page whose content type is not text is refused.
+
+These are guards, not a sandbox. A tool that fetches model-supplied URLs is the standard
+prompt-injection shape, and the instruction file tells the Main Agent to treat page content
+as data rather than instructions.
+
+### The search parser is the fragile part
+
+`search_web` uses DuckDuckGo's HTML endpoint because it needs no API key, which means
+there is no contract behind it — the extension parses someone else's markup. If search
+starts returning nothing, `parseSearchResults` in `src/tools.js` is where to look, and it
+fails by design with a message that says whether it was an empty result or a parse failure,
+because those two look identical from the model's side.
 
 ## Service worker
 
@@ -85,7 +118,9 @@ except that the in-flight request it was serving is lost.
 
 One limit worth knowing: Chrome caps a single request at roughly five minutes regardless
 of activity. A response longer than that is cut mid-stream and arrives as an error rather
-than a completion.
+than a completion. A response that uses tools counts against the same budget — the loop's
+own limit is six tool rounds, so it gives up with an explanation rather than hanging until
+Chrome kills it.
 
 ## IndexedDB origin
 

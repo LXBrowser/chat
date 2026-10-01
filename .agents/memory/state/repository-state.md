@@ -25,11 +25,14 @@ here, and the override table in the root index is empty.
 * `.agents/wiki/context/repository-map.md` — orientation page.
 * `.agents/memory/` — this file and the task records.
 * `wiki/` — `information/overview.md`, `environments/setup.md`, `environments/env.md`.
-* `manifest.json` — MV3, new-tab override, module service worker, one host permission.
-* `src/background.js` — the service worker. Every OpenRouter call, and the only place the
-  API key is read.
+* `manifest.json` — MV3, new-tab override, module service worker, three host permissions.
+* `src/background.js` — the service worker. Every OpenRouter call, the tool loop, and the
+  only place the API key is read.
+* `src/tools.js` — the tool schemas, and the two network tools the worker runs.
+* `src/prompts/system-instructions.md` — the Main Agent's operating manual, shipped with
+  the extension.
 * `src/db.js` — IndexedDB wrapper, three object stores, promisified, FK enforced in code.
-* `src/ui/app.js` — the wiring. Six modules under `src/ui/lib/`.
+* `src/ui/app.js` — the wiring. Eight modules under `src/ui/lib/`.
 * `src/ui/index.html` + `src/ui/css/` — the three-pane interface and its styles.
 * `src/ui/icons/icon-128.png` — generated icon.
 * `wiki/logs/0/1/0/CHANGELOG.md` — the only release.
@@ -45,10 +48,9 @@ models.
 * **No synthesis.** Sub-agents answer independently and are logged in the centre pane;
   nothing combines them into a single response. This was an owner decision for this phase,
   to keep the token cost and the architecture manageable.
-* **No search tool**, no HTML scraping. `host_permissions` covers OpenRouter only.
-* **No tool use at all.** Neither agent has tools; the Main Agent's system prompt says so
-  explicitly. The search-and-read tool is the next thing, and it arrives through the port
-  protocol that already exists rather than through a new mechanism.
+* **No tools for sub-agents.** The schemas are declared only on the Main Agent's requests.
+* **The system instructions are not editable in the interface.** They are seeded into
+  `agent_instructions` and read from there; nothing in the UI writes them yet.
 * **No separate sub-agent models.** The Main Agent and every sub-agent use whichever model
   the picker is set to.
 * **File attachments are listed, not read.** Files appear in the dropzone; their contents
@@ -66,28 +68,38 @@ models.
 * Send with multi-agent on; **every sub-agent makes a real OpenRouter call**, logs its
   result in the centre pane, and leaves the dropdown when it finishes — as does the Main
   Agent.
+* **Ask something the Main Agent cannot answer from memory.** It calls `search_web`,
+  follows a result with `read_page`, cites where the facts came from, and renames the chat
+  once it knows the subject. Tool calls log in the centre pane as they run.
 
 ## Limits worth knowing
 
-* **This spends real money.** Every prompt is a billable call, and multi-agent mode is
-  N+1 calls per send.
+* **This spends real money.** Every prompt is a billable call, multi-agent mode is N+1
+  calls per send, and a prompt that uses tools is several calls for the Main Agent alone.
 * **A single request is capped at roughly five minutes** by Chrome. A very long answer is
-  cut mid-stream and surfaces as an error, not a completion.
+  cut mid-stream and surfaces as an error, not a completion. The tool loop has its own
+  bound of six rounds.
 * **The service worker is terminated when idle.** A termination mid-stream loses that
   request; the port reconnects on the next send.
+* **`https://*/*` is granted** so `read_page` can follow a search result to any host. It is
+  deliberate and it is broad; the guards are in the tool, not the permission.
+* **The search parser is the fragile part.** It reads DuckDuckGo's keyless HTML with no API
+  contract behind it. If search starts returning nothing, that is where to look.
 * **`deepseek/deepseek-v4-flash` is unverified** — used exactly as the owner gave it, and
   not confirmed against OpenRouter's catalogue. A bad id fails loudly at request time.
 
 ## What has not been verified
 
 **The extension has never been loaded in a browser.** There is no Chrome in the authoring
-environment. Every module passes `node --check`, every import and DOM id resolves, and 37
+environment. Every module passes `node --check`, every import and DOM id resolves, and 105
 checks run under Node against stubbed `chrome` and `fetch` cover the service worker's SSE
-handling, the model settings, and the port client.
+handling and tool loop, the model settings, the port client, the search parser and HTML
+extraction, the page half of a tool round-trip, and the agent registry.
 
 But the DOM path and the real network round-trip are untested: `app.js` boot order, the
-modal, the panes rendering, the streaming caret, and whether OpenRouter accepts these
-requests at all.
+modal, the panes rendering, the streaming caret, whether OpenRouter accepts these requests
+or these tool schemas at all, and whether DuckDuckGo still serves markup the parser
+recognises. The tool loop has only been driven by scripted SSE bodies.
 
 The procedure is in `wiki/environments/setup.md`: load unpacked, walk the working list
 above, then run the `db.js` round-trip and its two negative paths from the console.
@@ -109,6 +121,7 @@ since there is one such folder. That file **is** committed.
 
 ## Next obvious step
 
-The search-and-read tool. It is the next thing the product description promises, it is what
-`host_permissions` was scoped around, and it needs no new mechanism: another request type
-over the port the model layer already established, plus a second host permission.
+Synthesis. Sub-agents answer independently and are logged; nothing merges them into one
+response, which is the largest thing the product description promises that the extension
+does not yet do. It is also the most expensive thing to build and to run, so it is an owner
+decision rather than an obvious one.
