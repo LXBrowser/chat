@@ -84,3 +84,47 @@ must not reorder `boot()`'s steps — the gate-before-wiring sequence is what ma
 the cancel path recoverable at all. Task 3 touches `src/ui/css/layout.css` only and
 must leave `.eyebrow--flush` alone, since it is correct in the three contexts where
 the label is not adjacent to the textarea.
+
+### Task 2 — `fix/boot-never-ran`
+
+**Landed.** One line and a catch, at the end of `src/ui/app.js`.
+
+**The invocation sits last in the file, not first.** A module that started itself
+at the top would be relying on hoisting it does not get for `const` bindings —
+`settings`, `busy`, `systemPrompt` are all initialised by the time boot reads
+them, but only because the call is after them. Putting it at the end makes that
+a property of the file's order rather than of the spec.
+
+**Cancel is handled rather than left to reject.** The gate rejects only on Cancel,
+and because wiring is step 5 nothing below it has run, so the Settings button has
+no listener. Unhandled, that is a page which looks alive, does nothing, and has no
+way to add a key — a dead end the owner would have hit and could not diagnose. So
+the reason is shown under the Send button and Settings reloads, which re-runs boot
+and re-opens the gate. **Reload on cancel itself was rejected**: it takes away the
+choice, and the owner's call was that cancelling should leave them able to decide.
+
+**A new assertion, written because this class of bug is invisible to the ones that
+already exist.** Every top-level function in `app.js` is now checked for being
+called: a function whose name appears exactly once in the file is defined and never
+invoked. That check fails on the file as task 1 found it and passes now. It runs
+from `/tmp` and is not committed, matching the repository's stated position that it
+has no test runner — but it is the check that would have caught this, and it costs
+one regex.
+
+**Verified.** `boot()` resolves to an invocation. `node --check` passes. No top-level
+function is uncalled. Every namespace and named import still resolves against a real
+export, and every DOM id `app.js` reaches for still exists in `index.html` — including
+`#send-status` and `[data-action="open-settings"]`, which the catch path depends on
+and which nothing else in the file uses.
+
+**Not verified — and this is now the largest gap in the repository.** Nothing here
+has been *executed*. Until the owner reloads, the correct claim is that `boot()` is
+invoked, not that the extension works. The first real run is the one that matters,
+and it may surface further defects in code that has likewise never run: the service
+worker, the tool loop, and the `read_page` guard.
+
+**What the next task now depends on.** Nothing — task 3 is pure CSS and cannot
+affect this. What task 4 does depend on is the honesty of the documentation:
+`setup.md`'s checklist, `overview.md`'s "Current state", and `repository-state.md`'s
+"What works today" all describe behaviour that has now been shown never to have run,
+and none of them may be marked verified on the strength of this commit.
