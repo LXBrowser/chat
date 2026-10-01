@@ -36,7 +36,9 @@ built-in search-and-read tool, and keep every conversation in local storage.
 
 ## Current state
 
-`0.1.0` chats for real. What you can do today:
+`0.1.0` is written to chat for real, and every item below is implemented. **None of it
+has been observed working.** Until the extension has been reloaded since `boot()` was
+wired up, treat this list as a description of what the code does, not of what it does:
 
 * load it unpacked; an API-key modal blocks the app until a key is stored
 * start, open, rename, and delete chats — all stored locally in IndexedDB
@@ -48,6 +50,12 @@ built-in search-and-read tool, and keep every conversation in local storage.
 * **ask something the model cannot answer from memory** and it will search, read a result,
   and say where the facts came from. Tool calls appear in the centre pane as they run.
 * **have the chat rename itself** once the main agent knows what the conversation is about
+
+That caveat is not caution for its own sake. `boot()` was found defined and never called,
+so the entire application sat inert behind a correct-looking interface until the second
+Chrome run. Walk the checklist in [Setup](../environments/setup.md) before relying on any
+of it — and expect that first real run to surface further defects, because the service
+worker, the tool loop and the `read_page` guard have never been in a browser either.
 
 What does not exist yet:
 

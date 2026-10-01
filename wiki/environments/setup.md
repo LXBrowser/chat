@@ -46,6 +46,10 @@ The extension has never been run in CI, so this is a manual pass. Work down it.
 **This costs money.** Every prompt is a billable OpenRouter call, and step 5 is five of
 them. Point the model at something cheap before you start.
 
+**This checklist has never been run to the end.** It was written before the first Chrome
+run and describes an application that turned out never to have booted at all. Expect to
+find things that are not in here.
+
 1. **Load unpacked.** Open a new tab. A modal blocks the app asking for an OpenRouter
    key — nothing else is usable until you provide one.
    **Open DevTools first and watch the console.** An
@@ -54,10 +58,24 @@ them. Point the model at something cheap before you start.
    sets `"style-src 'self'"`, which forbids them, and the styles it should have applied
    will be missing. Search the tree for `style="`; a class belongs in a stylesheet.
    With the console clean, the three panes should fill the tab, each with its glass
-   surface and its own scrollbar. In the right pane, **Your prompt** should sit flush on
-   the textarea, the textarea should take the height left over by the controls above it,
-   and the **Send / Clear** footer should never be overlapped — resize the window to
-   check it, including narrower than the design width.
+   surface and its own scrollbar. In the right pane, **Your prompt** should sit just
+   above the textarea — close, but not touching it — the textarea should take the height
+   left over by the controls above it, and the **Send / Clear** footer should never be
+   overlapped. Resize the window to check it, including narrower than the design width.
+
+   > **A pane that looks right is not proof that anything works.** This interface is
+   > static HTML and CSS, so it renders identically whether or not any JavaScript runs.
+   > It once sat exactly like this with `boot()` defined and never called — no gate, no
+   > database, no listener on any control. The checks that prove the app is alive are
+   > the ones after this: a chat in the history list, and a **Send** button that
+   > disables itself.
+
+   > **A pane that looks right is not proof that anything works.** This interface is
+   > static HTML and CSS, so it renders identically whether or not any JavaScript runs.
+   > It once sat exactly like this with `boot()` defined and never called — no gate, no
+   > database, no listener on any control. The checks that prove the app is alive are
+   > the ones after this: a chat in the history list, and a **Send** button that
+   > disables itself.
 2. **Send something.** Type a short prompt, press **Send**. The chat is titled from the
    first line, the prompt appears in the left pane, and then **the answer should start
    arriving word by word** with a blinking caret. The button says *Waiting…* and is

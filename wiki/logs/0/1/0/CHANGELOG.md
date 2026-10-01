@@ -171,7 +171,7 @@ extension had never been loaded.
   input: it absorbs the pane's slack, it stops short of the footer, and below the floor the
   pane body scrolls instead of the composer collapsing.
 * **The composer textarea fills its container and scrolls internally** (`overflow-y: auto`,
-  `resize: none`), and its label sits flush against its border.
+  `resize: none`).
 * **The multi-agent toggle's colour moved out of JavaScript.** `renderMultiAgent` assigned
   `btn.style.color` and `dot.style.background` rather than toggling a class. That was never
   a violation — a CSSOM property assignment is not the `style` attribute, and the policy
@@ -179,6 +179,38 @@ extension had never been loaded.
   only *represents* that state, and a tint living in JavaScript can drift from the state it
   mirrors. It is now a stylesheet rule keyed off `aria-pressed`, and the redundant `data-on`
   mirror was dropped with it.
+
+### The application had never run
+
+**`boot()` was defined in `src/ui/app.js` and never invoked.** The file ended at its last
+helper function with no call, so nothing in it had ever executed: no API-key gate, no
+settings load, no database open, no chat history, and no listener on any control — Send,
+Clear, New chat, Settings, the multi-agent toggle, the model picker, the dropzone and the
+title bar were all inert.
+
+This is worth reading twice, because the interface **looked completely normal**. It is
+static HTML and CSS, which need no JavaScript to render, so three panes of glass, a working
+layout and a clean console were all present on a page where not one line of behaviour
+existed. The only reason it surfaced is that the API-key modal never appeared, and the
+modal was the visible symptom of an invisible cause.
+
+The prior verification passed and could not have caught it. Every import resolved, every
+DOM id existed, and 102 Node checks were green — none of which execute `app.js`, and the
+repository has no DOM harness that could. A new assertion now checks that no top-level
+function in `app.js` is defined without being called; it fails on the file as it stood.
+
+Fixed by invoking `boot()`, and by handling its one rejection: the gate rejects when the
+user cancels, and because wiring happens after it the Settings button had no listener, so
+cancelling would have been a dead end. The reason is now shown under the Send button and
+Settings reloads to re-open the gate. Cancelling does not reload on its own — that takes
+away the choice.
+
+### Layout, second pass
+
+The composer label sat with a zero gap against the textarea's border, which at 11px
+uppercase with letter-spacing reads as collision rather than as alignment. It now has 4px
+— the value `.eyebrow` already uses as its own bottom margin, so no new spacing value
+enters the design system — and the hint below the textarea kept its 8px.
 
 ## Not in this release
 
@@ -209,17 +241,20 @@ per round.
 
 ## Unverified
 
-**The extension has now been loaded in Chrome twice.** The first run failed — it reported
-the CSP violation and the right-pane overlap this release fixes. After the fix, the owner
-reloaded and **the console is clean and the layout is correct**: the right pane's controls
-divide the tab properly, the composer takes the remaining height, its label sits flush on
-the textarea, and the Send / Clear footer is no longer overlapped. That is the first
-direct observation of this interface, and it covers the layout only.
+**The extension has been loaded in Chrome twice, and neither run exercised a line of
+application behaviour.** The first reported the CSP violation and the right-pane overlap
+above. The second, after that fix, found the composer label sitting on the textarea and
+the API-key modal never appearing — the modal because `boot()` was never called, which
+means the whole application was inert. **Nothing in `app.js` has ever run in a browser.**
+
+What *has* been observed is presentation: the three panes render under the extension's
+own CSP, the composer takes the remaining height, the Send/Clear footer is not overlapped,
+and after the second fix the label sits clear of the textarea.
 
 Verified: every module passes `node --check`; every import and every DOM id target
 resolves; no `style` attribute or style assignment anywhere in `src/`; all 47 classes used
-in `index.html` are defined in the stylesheets; and the three panes render as intended
-under the extension's own CSP. 102 checks run under Node against stubbed `chrome` and
+in `index.html` are defined in the stylesheets; and `boot()` resolves to an invocation with
+no top-level function left uncalled. 102 checks run under Node against stubbed `chrome` and
 `fetch` — 26 on the service worker (SSE handling, the tool loop, and assertions that the key
 never appears in anything the worker posts), 11 on the model settings, 11 on the port
 client, 46 on the tools (search parsing, HTML-to-text, entity decoding, the SSRF guard
@@ -227,13 +262,18 @@ including rebinding across a redirect, and both network tools against a stubbed 
 on the page side of a tool round-trip, and 21 on the agent registry against the auto-remove
 contract.
 
-Not verified: the **real network round-trip** — whether OpenRouter accepts these requests
-or these tool schemas at all, whether the streaming caret behaves over a live stream,
-whether DuckDuckGo still serves markup this parser recognises, and whether Chrome returns a
-readable `Location` for a `redirect: 'manual'` response as the redirect guard assumes. The
-tool loop has been driven only by scripted SSE bodies. Two layout cases are also still
-unobserved: the right pane below its 140px composer floor, and the layout under 900px where
-the responsive rules give `.pane` a `min-height: 260px`.
+**Not one of those checks executes `app.js`, and the repository has no DOM harness that
+could.** That is how a file with a fully written, correct, entirely unreachable `boot()`
+passed every check in two consecutive rounds.
+
+Not verified: **everything the extension does.** Whether it boots at all past the gate,
+whether OpenRouter accepts these requests or these tool schemas, whether the streaming
+caret behaves over a live stream, whether DuckDuckGo still serves markup this parser
+recognises, and whether Chrome returns a readable `Location` for a `redirect: 'manual'`
+response as the redirect guard assumes. The tool loop has been driven only by scripted SSE
+bodies. Two layout cases are also still unobserved: the right pane below its 140px composer
+floor, and the layout under 900px where the responsive rules give `.pane` a
+`min-height: 260px`.
 
 The procedure is in [Setup](../../../../environments/setup.md).
 
