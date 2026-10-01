@@ -16,10 +16,23 @@ No version change, no new permission, nothing in the service worker or the tools
 
 | # | Title | Scope (one line) | Repository | Branch | Files / areas | PR |
 |---|---|---|---|---|---|---|
-| 1 | Task record | This file, written before the work | LXBrowser/chat | `chore/ui-overlap-and-modal-plan` | `.agents/memory/tasks/` | — |
-| 2 | Call `boot()` | The application has never run | LXBrowser/chat | `fix/boot-never-ran` | `src/ui/app.js` | — |
-| 3 | Composer label spacing | 0px to 4px above the textarea | LXBrowser/chat | `fix/composer-label-spacing` | `src/ui/css/layout.css` | — |
-| 4 | Release | Changelog, the setup checklist, closing entries | LXBrowser/chat | `docs/ui-overlap-and-modal-release` | `wiki/`, `.agents/memory/` | — |
+| 1 | Task record | This file, written before the work | LXBrowser/chat | `chore/ui-overlap-and-modal-plan` | `.agents/memory/tasks/` | #9 |
+| 2 | Call `boot()` | The application has never run | LXBrowser/chat | `fix/boot-never-ran` | `src/ui/app.js` | #13 (was #10) |
+| 3 | Composer label spacing | 0px to 4px above the textarea | LXBrowser/chat | `fix/composer-label-spacing` | `src/ui/css/layout.css` | #11 |
+| 4 | Release | Changelog, the setup checklist, closing entries | LXBrowser/chat | `docs/ui-overlap-and-modal-release` | `wiki/`, `.agents/memory/` | #12 |
+
+**The stack did not merge the way the plan assumed, and the reason is worth keeping.**
+`plan_creator` §F says deleting a branch as it merges is the signal that re-targets the
+next pull request. For task 2 it was not: deleting `chore/ui-overlap-and-modal-plan` on
+merge **auto-closed #10** rather than re-targeting it to `master`. A closed request cannot
+have its base changed and cannot be reopened, so #10 was replaced by #13 — same branch,
+same commit, same diff, retargeted to `master`. Tasks 3 and 4 were then retargeted to
+`master` *before* anything merged, which is the procedure §F gives for a branch that has
+to be kept, and which is what stopped the same thing happening twice.
+
+So on this forge "delete on merge" is not a safe re-target signal; "re-target by hand
+before merging" is. Every merge below was verified by reading `master` afterwards rather
+than by trusting the request's state.
 
 Tasks 2 and 3 touch different files, are independently reviewable, and have no
 dependency on each other, so they are separate branches rather than one. Task
