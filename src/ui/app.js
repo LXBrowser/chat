@@ -551,22 +551,70 @@ function summariseAnswer(answer) {
 // Start
 // ---------------------------------------------------------------------------
 
-// Called last, so every declaration above is defined before boot runs — a module
-// that started itself mid-file would be relying on hoisting it does not get for
-// `const` bindings.
-//
-// The only rejection boot() can produce is the API-key gate, and only when the
-// user cancels it. Steps 2–5 never run in that case, which means the Settings
-// button has no listener: without the catch below, cancelling would leave a page
-// that looks alive and does nothing, with no way to add a key and start over.
-boot().catch((err) => {
+/**
+ * Why this page cannot start, or null when it can.
+ *
+ * Two faults look identical from the outside — a `TypeError` about `local` beside a
+ * Send button — and they are not the same problem, so they are named separately. The
+ * fix for one does nothing for the other, which is what made the first diagnosis go
+ * looking for an extension-context problem that was not there.
+ */
+function startupFault() {
+  // The new-tab page is served from the extension origin, so this should be true. It is
+  // checked rather than assumed because `src/ui/index.html` also opens from a file://
+  // path, where `window.chrome` exists but carries none of the APIs.
+  if (typeof chrome === 'undefined' || !chrome.runtime?.id) {
+    return 'This page is not running as an extension page, so it cannot reach Chrome ' +
+           'APIs. Open it as a new tab with the extension enabled, not from a file.';
+  }
+
+  // In Manifest V3 Chrome only injects `chrome.storage` when "storage" is declared in
+  // the manifest's `permissions`. Undeclared it is `undefined`, so `storage.local.get()`
+  // throws on the first call — and so does every read the service worker makes of the
+  // key, which is why nothing had ever reached OpenRouter either.
+  if (!chrome.storage?.local) {
+    return 'This extension does not declare the "storage" permission, so Chrome has not ' +
+           'made chrome.storage available. Reload the extension at chrome://extensions.';
+  }
+
+  return null;
+}
+
+// The check runs before boot() rather than inside it, so a manifest fault is reported
+// as itself rather than surfacing as whatever the first storage call happened to throw.
+const fault = startupFault();
+
+if (fault) {
+  // No reload is offered here, and that is deliberate: the fault is in the manifest, so
+  // reloading lands on exactly this same page with exactly this same problem.
   const status = $('send-status');
   status.hidden = false;
-  status.textContent = err.message;
+  status.textContent = fault;
 
-  document.querySelector('[data-action="open-settings"]').addEventListener(
-    'click',
-    () => window.location.reload(),
-    { once: true },
-  );
-});
+  // Nothing below is wired, so Send would be a button that does nothing. Disabled beats
+  // enabled-and-inert, which is what the previous run looked like.
+  $('send-btn').disabled = true;
+} else {
+  // Called last, so every declaration above is defined before boot runs — a module
+  // that started itself mid-file would be relying on hoisting it does not get for
+  // `const` bindings.
+  //
+  // The only rejection boot() can produce is the API-key gate, and only when the
+  // user cancels it. Steps 2–5 never run in that case, which means the Settings
+  // button has no listener: without the catch below, cancelling would leave a page
+  // that looks alive and does nothing, with no way to add a key and start over.
+  //
+  // Reaching here means `startupFault()` found nothing, so a reload has a real chance
+  // of helping: it re-runs boot from the top and re-opens the gate.
+  boot().catch((err) => {
+    const status = $('send-status');
+    status.hidden = false;
+    status.textContent = err.message;
+
+    document.querySelector('[data-action="open-settings"]').addEventListener(
+      'click',
+      () => window.location.reload(),
+      { once: true },
+    );
+  });
+}
