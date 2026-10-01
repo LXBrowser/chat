@@ -5,6 +5,64 @@ are stored. The main agent can search the web, read what it finds, and rename th
 
 ## Added
 
+### The centre pane reads top to bottom, and holds three things
+
+The model picker moved out of the right pane, which is now composer-only. The conversation
+moved **into** the centre pane, between the picker and the transcript, and the left pane is
+now "Chats" because the conversation is no longer there.
+
+**There was no rendering bug.** `renderTranscript()` has always targeted `$('transcript')`,
+and `#transcript` was simply declared in the wrong `<section>` — so the element moved and
+the function did not change. Reported as messages appearing in the sidebar, caused by
+markup sitting in the wrong pane.
+
+Between them, one status row:
+
+* **A single row whose text changes in place.** `views.setActivity()` assigns `textContent`
+  to one existing node, and `white-space: nowrap` with `text-overflow: ellipsis` keeps it
+  one line *by construction* rather than by the length of the text. The owner asked for
+  this explicitly and twice.
+* **The agent dropdown, the append-only log, the count badge and the empty-state callout
+  are gone**, with `renderAgents`, `renderLog`, `wireAgents`, `paintAgents`,
+  `agents.log/logLines/clear/get/isActive` and the two argument summarisers. The registry
+  keeps `spawn`/`finish`/`fail`/`list`/`activeCount`/`subscribe`, which is all the row
+  needs.
+* **The running count rides in the row's text** — `Working… · 1 running` — which is what
+  replaces the count badge.
+* **User messages are right, agent messages are left.** One `max-width` on `.msg` and
+  `align-self` on each side, measured rather than declared.
+* **`#transcript` is no longer a live region.** It was rewritten on every streamed token,
+  which is a chatty live region; the status row takes `role="status"` and the streaming
+  bubble takes `aria-busy`. Fewer interruptions, at the cost of the transcript no longer
+  announcing itself — a deliberate trade, not a cleanup.
+
+### A key can be replaced without handing the page the key
+
+With a key stored, **Settings** shows a `readonly` field holding a fixed mask, an **Edit**
+button, and a disabled **Update key**. Edit clears the field and enables the button.
+Cancel writes nothing and restores the state the modal opened in.
+
+**The stored key cannot be read from the page at all.** `storage.getApiKey()` is *deleted*,
+not merely unused; `hasApiKey()` returns a boolean. The mask is a constant derived from
+nothing — not from the key, not from its length, not from its tail — so a stored key is
+neither in the DOM nor reachable from it.
+
+**Update key is the only action that writes**, and it is inert until Edit is pressed.
+Enter follows the primary action and is equally inert while locked; without that, Enter
+would save the mask back over a working key.
+
+### A failed send now says why
+
+**`runMainAgent()` swallowed every failure.** It caught the error, wrote it to the agent
+log, and returned — so `send()` never saw it, cleared its note on the way through, and the
+composer reported success. A 401, a 402, an empty answer and a dead worker all presented as
+**a Send that did nothing**, with the reason sitting in a log pane nobody was looking at.
+
+One statement fixes it: `throw err`. The distinction that makes rethrowing correct rather
+than blunt is that a **tool** failure never reaches this catch — the worker hands it back
+to the model as a failed tool result and the conversation continues — so everything that
+arrives here is a genuine request or transport failure.
+
 ### Agent instruction architecture
 
 * `AGENTS.md` — entry point and activation contract. Carries the `lxagents-shared-instruction`
@@ -45,9 +103,9 @@ are stored. The main agent can search the web, read what it finds, and rename th
   a raw `IDBRequest`. `message_index` is derived rather than accepted, and the
   `chat_messages.session_id` foreign key is enforced in code, because IndexedDB has no
   native constraint.
-* `src/ui/index.html` — three floating, independently scrollable panes: conversation and
-  history, agent status and logs, and the composer with file drop, multi-agent toggle, and
-  the chat-title editor.
+* `src/ui/index.html` — three floating, independently scrollable panes: chat history, the
+  conversation, and the composer with file drop, multi-agent toggle, and the chat-title
+  editor.
 * `src/ui/css/tokens.css` — the design tokens copied verbatim, so neither the design system
   nor the extension can drift from the other.
 * `src/ui/icons/icon-128.png` — generated icon.
@@ -58,12 +116,12 @@ are stored. The main agent can search the web, read what it finds, and rename th
   owns no state of its own.
 * `src/ui/lib/storage.js` — `chrome.storage.local`, for the API key and UI settings.
   `sync` was rejected: it uploads to Google's servers, which is wrong for a credential.
-* `src/ui/lib/agents.js` — the agent registry. `list()` returns only agents still running,
-  so an agent leaving the dropdown is a property of the registry rather than a step the UI
-  has to remember.
+* `src/ui/lib/agents.js` — the agent registry behind the status row. `list()` returns only
+  agents still running, so the count dropping is a property of the registry rather than a
+  step the UI has to remember.
 * `src/ui/lib/sessions.js` — the only module that touches the database.
 * `src/ui/lib/views.js` — all DOM rendering.
-* `src/ui/lib/api-key.js` — the blocking key gate.
+* `src/ui/lib/api-key.js` — the blocking key gate, and the settings-side edit flow.
 
 ### Model layer
 
@@ -74,12 +132,13 @@ are stored. The main agent can search the web, read what it finds, and rename th
   cannot carry a stream. Requests are keyed by `requestId` because the main agent and every
   sub-agent are in flight at once.
 * **Exactly one terminal message per request** — `delta` any number of times, then one of
-  `done` or `error`. That guarantee is what lets the page remove an agent from the dropdown.
+  `done` or `error`. That guarantee is what lets the page settle the status row and drop
+  the agent from the running count.
 * A port that disconnects aborts its own requests, and the client reconnects on the next
   send, so the worker being terminated when idle is invisible except to a request already
   in flight.
 * `src/ui/lib/openrouter.js` — the page's port client.
-* A **model picker** on the right pane: a dropdown of `openai/gpt-4o-mini` and
+* A **model picker** on the centre pane: a dropdown of `openai/gpt-4o-mini` and
   `deepseek/deepseek-v4-flash`, plus a custom-id field that overrides the dropdown.
   Stored in `chrome.storage.local`; default `openai/gpt-4o-mini`.
 * **Send is guarded while a request is in flight.** A second click would stream two answers
@@ -154,8 +213,37 @@ are stored. The main agent can search the web, read what it finds, and rename th
 
 ## Fixed
 
-**Two defects the first browser run found.** Neither had been visible before, because the
-extension had never been loaded.
+### The `hidden` attribute did nothing on any element with a class that sets `display`
+
+`.btn` is `display: flex`, which beats the UA stylesheet's `display: none` for the `hidden`
+attribute. A button toggled with `element.hidden = true` stayed on screen while reading
+`true` — found by looking at a screenshot, because **every DOM assertion had passed**:
+`element.hidden` is the obvious way to test that something is hidden and it is not
+sufficient. Fixed once, globally, with `[hidden] { display: none !important; }`.
+
+### Two contrast defects on glass
+
+`.msg__role` and `.send-status` both used `--ink-400`, which the design system's
+`accessibility.md` clears against `--white` and `--silver-050` **only** — not `--glass`.
+Both sit on glass. Moved to `--ink-500`. Found while choosing a token for the new status
+row and noticing that the two rules already contradicted each other.
+
+### The key modal was wired backwards
+
+The first implementation opened the **boot gate locked** with no key stored, and
+**Settings editable** with one stored. Every static check passed, because each asserted a
+property of the code — `setApiKey` is called once, Enter guards on `locked` — rather than
+the behaviour that was asked for. Only clicking through the modal in a browser showed the
+gate demanding a key it did not have.
+
+A related defect sat behind it: the framing and the lock were one function, so clicking
+**Edit** re-announced the modal as **"One-time setup"** and asked for a key — mid-
+replacement, with one already stored. Whether a key *exists* and whether the field is
+*locked* are different questions, and are now answered by different functions.
+
+### Two defects the first browser run found
+
+Neither had been visible before, because the extension had never been loaded.
 
 * **The Content Security Policy was being violated.** `manifest.json` declares
   `"style-src 'self'"`, which is correct and stays. `src/ui/index.html` carried ten
@@ -311,10 +399,11 @@ not a numbered step**: cancelling the modal is a decision, not a fault, and labe
 
 ## Not in this release
 
-* **No synthesis.** Sub-agents each make a real OpenRouter call and log their answer in the
-  centre pane. Nothing merges them into a single response — an owner decision for this
-  phase, to keep the token cost and the architecture manageable.
-* **Sub-agent answers are not stored.** They stay in the agent log. `chat_messages` has no
+* **No synthesis.** Sub-agents each make a real OpenRouter call and answer independently.
+  Nothing merges them into a single response — an owner decision for this phase, to keep the
+  token cost and the architecture manageable.
+* **Sub-agent answers are not stored.** There is no log to keep them in any more; the
+  status row reports the current state and does not keep history. `chat_messages` has no
   `subagent` role, and N extra answers per send would read as a bug in the transcript.
 * **No search for sub-agents.** Tools are declared only for the main agent's requests.
 * **The search parser reads third-party HTML.** DuckDuckGo's keyless endpoint was chosen so
@@ -339,43 +428,93 @@ per round.
 ## Unverified
 
 **The extension has now been executed end to end in a real browser, and that changes what
-the rest of this section can say.** It has been loaded in Chrome four times. The first
+the rest of this section can say.** It has been loaded in Chrome five times. The first
 reported the CSP violation and the right-pane overlap. The second, after that fix, found the
 composer label on the textarea and the API-key modal never appearing — the modal because
 `boot()` was never called, so the whole application was inert. The third was the first live
 execution of anything in `app.js`, and it rejected at step 1 because the manifest declared
 no permissions. The fourth reached step 4 and found the `dataset` fault above, which
-stopped it before a single listener was attached.
+stopped it before a single listener was attached. The fifth reported a Send that did
+nothing, messages in the wrong pane, and a centre pane holding the wrong three things.
 
-**Those first three were read off a person looking at a screen.** This one was driven: the
-unpacked extension is loaded into Chromium with Playwright, a placeholder key is written
-into a throwaway profile so the gate opens, and the page is exercised. **19 checks, all
-passing, no page errors**: boot completes, the gate closes, the model dropdown populates,
-`data-session-id` is a real attribute, and every control answers — history rows switch
-chats and delete, the title input follows the open chat, the multi-agent toggle flips
-`aria-pressed`, Settings opens the modal and Cancel closes it, Clear empties the textarea,
-Send enters its busy state, stores the prompt, reports the outcome and re-enables, and a
-dropped file is listed. The composer measures a 6px gap with 6px of clearance to the
-textarea's border.
+**The request path has now been executed — against a stub.** The service worker's `fetch`
+is replaced *in the worker context* with a scripted SSE body, so the port, the SSE parser,
+the delta assembly, the IndexedDB write and the repaint all run with **no key and no
+billable call**. That closes a gap the previous three releases named and could not: until
+now the request path had never been executed anywhere.
 
-**What that still does not cover is the request itself.** The harness has no key and no
-intention of having one, so everything past `wireComposer()`'s call into the service worker
-— the port, SSE streaming, the tool loop, sub-agent fan-out — remains unobserved against a
-live OpenRouter. Send is verified to *respond* and to *report an outcome*, not to succeed.
+Three modes, each run against the fix and against the tree before it:
+
+| Mode | Before | After |
+|---|---|---|
+| success | answer stored, survives reload | **unchanged** — still stored, survives reload |
+| 401 | `send-status` hidden, nothing anywhere | `OpenRouter returned 401 — No auth credentials found` |
+| empty | `send-status` hidden | `The model returned an empty answer.` |
+
+**The success row is the one that matters**, because it went green *before* the fix too.
+Streaming, assembly and persistence were never broken; the fix was entirely about
+reporting. A real 401 then confirmed it by accident — the browser regression runs without
+the stub, sent a real request with the placeholder key, and the page reported OpenRouter's
+own `401 — User not found`. Nothing was stubbed and it cost nothing.
+
+**This is still not a real OpenRouter answer.** What has never seen a live request is
+everything past the first answer: whether OpenRouter accepts these tool schemas, whether
+the streaming caret behaves over a live stream, whether DuckDuckGo still serves markup this
+parser recognises, and whether Chrome returns a readable `Location` for a
+`redirect: 'manual'` response as the redirect guard assumes. The tool loop and sub-agent
+fan-out have been driven only by scripted SSE bodies.
+
+**The centre pane and the key modal are verified by measurement, not by reading the
+stylesheet.** Alignment, because a rule present in the CSS and overridden later still lays
+out wrong: the user bubble's left edge is 767px against the agent's 345px, in a stream
+running 345–855px. The status row, because "the text changes in place and never spawns a
+line" is a property of the DOM over time and not of the source: a `MutationObserver`
+attached to the status node *before* a send records `Working… · 1 running`,
+`Writing… · 1 running`, `Answer ready` — and an observer on a replaced element stops
+reporting, so a trace that runs to completion is itself the proof the node was never
+swapped. The key modal, because a DOM assertion cannot show that storage was not written:
+`chrome.storage.local` is read directly at every step, so **Edit then Cancel leaves it
+byte-identical**, Enter while locked writes nothing, and a blank Update is refused without
+clearing the existing key.
+
+**Four browser suites, all passing, no page errors**: the interface sweep, the send in its
+three modes, the centre-pane layout, and the key modal.
 
 Verified statically: every module passes `node --check`; every import and every DOM id
 target resolves; no `style` attribute or style assignment anywhere in `src/`; all 47
 classes used in `index.html` are defined in the stylesheets; `boot()` resolves to an
 invocation with no top-level function left uncalled; and every `chrome.<api>` used in `src/`
-has its permission declared or is one that needs none. **122 checks** run under Node
+has its permission declared or is one that needs none. **185 checks** run under Node
 against stubbed `chrome` and `fetch` — 26 on the service worker (SSE handling, the tool
-loop, and assertions that the key never appears in anything the worker posts), 11 on the
-model settings, 11 on the port client, 46 on the tools (search parsing, HTML-to-text, entity
-decoding, the SSRF guard including rebinding across a redirect, and both network tools
-against a stubbed fetch), 8 on the page side of a tool round-trip, 21 on the agent registry
-against the auto-remove contract, 3 on the manifest's permissions, 17 on the `data-*`
-attribute names written by `views.js` and selected by `app.js`, and 11 on the boot step
-labels agreeing with the file's own load-order list.
+loop, and assertions that the key never appears in anything the worker posts), 46 on the
+tools (search parsing, HTML-to-text, entity decoding, the SSRF guard including rebinding
+across a redirect, and both network tools against a stubbed fetch), 15 on the key modal's
+state machine and the deletion of the key accessor, 13 on the agent registry against the
+auto-remove contract, 13 on the `data-*` attribute names written by `views.js` and
+selected by `app.js`, 12 on the single status row, 11 each on the model settings, the port
+client, the boot step labels and the centre pane's structure, 8 on the page side of a tool
+round-trip, 5 on a failed send reaching the composer, and 3 on the manifest's permissions.
+
+**Two of those numbers were wrong in an earlier draft of this file, and both were wrong the
+same way.** It claimed 21 checks on the agent registry and 17 on the `data-*` names; the
+real figures were 13 and 13, and *nothing in the suite touched the registry at all* — the
+registry count was not a lower number, it was an invented one. The registry now has 13
+checks that were written against the rewrite that removed its log.
+
+**The DOM gap is what four rounds of static checks could not close, and it is worth being
+blunt about the cost.** A file with a fully written, correct, entirely unreachable `boot()`
+passed every check twice. A manifest with no `permissions` key passed them again. A helper
+that threw on its first element in a strict-mode module passed them a third time. **None of
+them executed `app.js`, and the repository has no DOM harness to do so.** The uncalled-
+function assertion, the permission sweep and the dataset sweep are one-shot checks against
+faults already fixed — not standing guards, and not a substitute for running the thing.
+
+**And the fifth run adds the other half of that lesson.** Two defects this round passed
+every static check *in the other direction* — they asserted properties of the code and not
+the behaviour asked for, so a state machine wired backwards was green on both sides. And a
+CSS bug passed every DOM assertion because `element.hidden` reads `true` while the element
+is still painted. **A check that reads a property is not the same as a check that observes
+the thing.**
 
 **The DOM gap is what four rounds of static checks could not close, and it is worth being
 blunt about the cost.** A file with a fully written, correct, entirely unreachable `boot()`
@@ -411,8 +550,9 @@ The procedure is in [Setup](../../../../environments/setup.md).
   verified against OpenRouter's catalogue. A wrong id fails loudly at request time.
 * The design system at `.agents/design/` departs from the shared set's five-tree
   directory mandate, by explicit owner instruction. Recorded in `AGENTS.md` §Placement.
-* The agent-status dropdown and the OpenRouter modal are opaque, not glass — they cover
-  page content. See `.agents/design/overlay-opacity.md`.
+* The OpenRouter modal is opaque, not glass — it covers page content. See
+  `.agents/design/overlay-opacity.md`. It was the second such surface; the agent-status
+  dropdown that shared that rule is gone, so the modal is now the only one.
 * `https://*/*` is granted so `read_page` can follow a search result to an arbitrary host.
   Chrome warns about it at install time. It is deliberate, and the tool's own guards are in
   `src/tools.js` — see [Environment](../../../../environments/env.md).
