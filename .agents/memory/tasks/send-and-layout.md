@@ -142,3 +142,55 @@ monitor, which means task 2 lands on `master` with nowhere to report an agent-le
 except the transcript; that is acceptable inside a stack and never on its own. Task 4
 deletes `storage.getApiKey()`, so any call site task 3 leaves behind has to be gone before
 task 4 runs, and the static check for it is written against the pre-fix tree.
+
+### Task 2 — `fix/send-failure-visibility`
+
+One statement added, in `runMainAgent()`'s catch: `throw err`. That is the entire code
+change. Everything else is comments that were stating the opposite.
+
+**The failure was invisible, not absent.** That is the distinction the fifth run turned on,
+and it is worth being exact about: a 401 did exactly what it should, the reason was written
+down, and nobody saw it. Every layer above the catch behaved correctly *given* that the
+catch did not rethrow. The fix is not "make send report errors" — it always did — it is
+"stop discarding them one function later".
+
+**Both halves of the change were needed.** The rethrow alone would have set `sendNote` to
+the reason; the `sendNote = ''` line was already correct as written and needed no change.
+What did need changing was the comment above the catch, which claimed *"Failures inside an
+agent are reported in its log"* — true, and precisely the bug. A comment asserting the
+behaviour that is being fixed is the kind of thing that survives a fix and misleads the
+next reader, so it went with it.
+
+**What does not reach this catch, and why the distinction is safe.** A tool that fails
+mid-run never arrives here: the worker hands the failure back to the model as a failed tool
+result (`{ok: false, error}`) and the conversation continues, so `openrouter.chat()` resolves
+normally. Everything in this catch is therefore a genuine request or transport failure, and
+rethrowing all of it is correct rather than blunt.
+
+**Proven, not asserted.** The service worker's `fetch` is replaced in the worker context
+with a scripted body, so the whole chain runs — port, SSE parse, deltas, assembly,
+`chat_messages`, repaint — with no key and no billable call. Three modes, run against this
+branch and against the pre-fix tree:
+
+| Mode | Pre-fix | This branch |
+|---|---|---|
+| 401 | `send-status` hidden, nothing anywhere | `OpenRouter returned 401 — No auth credentials found` |
+| empty answer | `send-status` hidden | `The model returned an empty answer.` |
+| success | answer stored, survives reload | **unchanged** — still stored, survives reload |
+
+The success row is the one that matters most, because it is the first time anything has run
+the request path at all. It went green on the pre-fix tree too, which is the proof that this
+task fixed the reporting and nothing else: streaming, assembly and persistence were never
+broken.
+
+**A real 401 confirmed it by accident.** The browser regression runs *without* the stub, so
+it sent a real request with the placeholder key and got a genuine `401 — User not found`
+back — and the page reported it. That was not planned and cost nothing, and it is the
+strongest single piece of evidence here, because nothing was stubbed.
+
+**Five new static checks**, `/tmp/wt/senderror.test.mjs`, verified in both directions: 5/5
+on this branch, 2 failing on the pre-fix tree. It asserts the rethrow *and* that the catch
+still marks the agent failed before throwing — a "fix" that replaced the catch with a bare
+`throw` would pass a one-directional check and lose the agent's own state.
+
+138 Node checks (up from 133) and 19 browser checks still pass.

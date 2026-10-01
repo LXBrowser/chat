@@ -303,8 +303,10 @@ function wireComposer() {
       // Cleared only on the way through: a failure leaves its message showing.
       sendNote = '';
     } catch (err) {
-      // A failure here means the prompt could not even be sent — a missing key, a closed
-      // database, no extension context. Failures inside an agent are reported in its log.
+      // The request failed, so the reason belongs under the Send button rather than only
+      // in an agent's log. `runMainAgent()` rethrows for exactly this; a tool that fails
+      // mid-run does not reach here, because the worker hands the failure back to the
+      // model as a failed tool result and the conversation continues.
       sendNote = err.message;
       console.error('Send failed:', err.message);
     } finally {
@@ -457,6 +459,9 @@ async function conversationContext() {
  * works and leaves it when it finishes. That is the whole of the "active until complete"
  * behaviour — the registry already guarantees it.
  *
+ * Rejects on a failed request, having left the agent marked failed and whatever partial
+ * answer arrived on screen.
+ *
  * Only the Main Agent gets tools. The worker runs the network ones and forwards
  * `update_chat_title` back here, because renaming touches the database and the title bar,
  * and neither is reachable from the worker.
@@ -496,6 +501,12 @@ async function runMainAgent(history) {
     // Nothing was stored, so whatever arrived stays on screen — a partial answer is still
     // more use than an empty bubble.
     views.endStream();
+    // Rethrown, and this is the whole fix. Swallowing it here meant `send()` reached its
+    // `sendNote = ''` on the way through and reported success: a 401, a 402, an empty
+    // answer and a dead worker all presented as a Send that did nothing. The reason was
+    // written to the agent log the entire time, in a pane the person sending was not
+    // looking at.
+    throw err;
   }
 }
 
