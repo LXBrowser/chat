@@ -64,11 +64,11 @@ hand-authored and committed.
 ## Build, test, run
 
 There is no build and no test runner. The extension is loaded unpacked and exercised in a
-browser; see [`../../wiki/environments/setup.md`](../../wiki/environments/setup.md).
+browser; see [`../../../wiki/environments/setup.md`](../../../wiki/environments/setup.md).
 
 Database behaviour is verified by calling `src/db.js` directly from the new-tab console —
 the snippet is in
-[`../../../.agents/memory/tasks/extension-foundation.md`](../../../.agents/memory/tasks/extension-foundation.md).
+[`../../memory/tasks/extension-foundation.md`](../../memory/tasks/extension-foundation.md).
 
 ## Known gotchas
 

@@ -17,4 +17,4 @@ Any version directory added or removed is reflected here **in the same commit**.
 
 | Version | Date | Summary |
 |---|---|---|
-| [`0.1.0`](../logs/0/1/0/CHANGELOG.md) | 2026-10-01 | Initial scaffold — agent instruction architecture, documentation trees, and the extension shell. |
+| [`0.1.0`](../../wiki/logs/0/1/0/CHANGELOG.md) | 2026-10-01 | Initial scaffold — agent instruction architecture, documentation trees, and the extension shell. |

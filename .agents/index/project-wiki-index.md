@@ -18,13 +18,13 @@ Any file added to or removed from this scope is reflected here **in the same com
 
 | File | Purpose |
 |---|---|
-| [`../information/overview.md`](../information/overview.md) | What the extension is, its stack, and its current state. |
+| [`../../wiki/information/overview.md`](../../wiki/information/overview.md) | What the extension is, its stack, and its current state. |
 
 ## `environments/`
 
 | File | Purpose |
 |---|---|
-| [`../environments/setup.md`](../environments/setup.md) | Load the unpacked extension and open the new-tab page. |
-| [`../environments/env.md`](../environments/env.md) | How the OpenRouter API key is supplied and stored. |
+| [`../../wiki/environments/setup.md`](../../wiki/environments/setup.md) | Load the unpacked extension and open the new-tab page. |
+| [`../../wiki/environments/env.md`](../../wiki/environments/env.md) | How the OpenRouter API key is supplied and stored. |
 
 `logs/` is not listed here — it is routed by [`logs-index.md`](logs-index.md).
