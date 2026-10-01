@@ -27,3 +27,4 @@ Memory is written freely and automatically — it is the one tree with no approv
 | [`../memory/tasks/extension-foundation.md`](../memory/tasks/extension-foundation.md) | Record of the design-system scatter and the extension shell: the task table, filled per task as the work lands. |
 | [`../memory/tasks/ui-overlap-and-modal.md`](../memory/tasks/ui-overlap-and-modal.md) | Record of the second browser run: the composer label spacing, and the discovery that `boot()` was never called. |
 | [`../memory/tasks/runtime-and-overlap.md`](../memory/tasks/runtime-and-overlap.md) | Record of the third browser run: the missing `storage` permission that made every storage call throw, and the composer gap. |
+| [`../memory/tasks/ui-runtime-bugs.md`](../memory/tasks/ui-runtime-bugs.md) | Record of the fourth browser run: `Object.assign` throwing on `dataset`, which stopped `boot()` before any listener was attached. |
