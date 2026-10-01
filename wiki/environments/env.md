@@ -21,7 +21,9 @@ The flow is wired:
 * On load, the page checks `chrome.storage.local` for a key.
 * If none is stored, a blocking modal appears. Nothing else in the app runs until one is.
 * The modal accepts a paste and stores it under `chrome.storage.local`.
-* **Settings** replaces a stored key without a reload.
+* **Settings** replaces a stored key without a reload. Cancelling leaves the stored key
+  alone — refusing to replace a key you already have is a legitimate choice, not a failure.
+  There is no "forget this key" control.
 
 The paste is *not* validated against OpenRouter before being stored. Doing that costs a
 request and gives a slower first-run; the first real send is where a bad key surfaces, and

@@ -55,24 +55,16 @@ export async function getApiKey() {
 }
 
 /**
- * Stores a key, rejecting an empty one rather than clearing it by accident —
- * clearing is `clearApiKey()`.
+ * Stores a key, rejecting an empty one rather than clearing it by accident.
+ *
+ * Replacing a key is `setApiKey()` with a new value — there is nothing to clear first,
+ * since a single storage key holds the one credential.
  */
 export async function setApiKey(key) {
   const clean = String(key ?? '').trim();
   if (!clean) throw new Error('API key cannot be empty');
   await chrome.storage.local.set({ [API_KEY]: clean });
   return clean;
-}
-
-export async function clearApiKey() {
-  await chrome.storage.local.remove(API_KEY);
-}
-
-/** Replaces the stored key. The settings surface calls this. */
-export async function replaceApiKey(key) {
-  await clearApiKey();
-  return setApiKey(key);
 }
 
 // ---------------------------------------------------------------------------

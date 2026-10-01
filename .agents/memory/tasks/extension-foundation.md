@@ -355,3 +355,27 @@ that touches the interface follows: declare the schema in `src/tools.js`, implem
 `src/ui/lib/page-tools.js`, and it arrives at the worker through `pageToolNames()` without
 any change to `background.js`. The seeded instructions can be edited in `agent_instructions`
 and nothing in the UI writes them yet — that is the seam an instructions editor uses.
+
+### Task 6, cleanup pass — `feat/tools-and-search`
+
+Four dead-code findings from an audit at the end of task 6, all approved by the owner.
+
+* **`agents.simulate()` removed.** Task 4's entry calls it "the seam a real OpenRouter
+  round-trip replaces" — and task 5 replaced that seam, so ~40 lines of timer-driven code
+  had no callers. Its references in task 4's entry above are left as written: that entry
+  records what task 4 did, not what survived.
+* **`.dot--error` removed** from `components.css`. It resolved to `var(--sponsor)` — brand
+  pink — because the design system has no danger token, only `--ok` and `--warn`. The class
+  was unused, so nothing rendered wrong; the point is that an error in the sponsor colour
+  would have looked deliberate. Failures are carried by the label text until a danger token
+  exists. `.dot--done`, `.badge--ok` and `.badge--warn` are also unused but are left in
+  place: they resolve to real intent tokens, and removing them is a design decision.
+* **`maskedKey()` and `replaceApiKey()` removed**, neither of which had a caller.
+  `replaceApiKey`'s docblock claimed "the settings surface calls this" — it did not, and
+  `env.md` repeated the claim. `clearApiKey()` went with it, since `replaceApiKey` was its
+  only caller.
+* **`changeApiKey()`'s redundant branch removed.** A `saved === null` early return did
+  exactly what the `try` below it already did.
+
+Verified: every module passes `node --check`, no dangling references to any removed name,
+and the 102 checks still pass. Nothing in the removed set was reachable at runtime.

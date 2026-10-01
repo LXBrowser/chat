@@ -168,6 +168,8 @@ are stored. The main agent can search the web, read what it finds, and rename th
 * **No separate sub-agent models** — main and sub-agents share whichever model is selected.
 * **The system instructions are not editable in the interface.** They are seeded into
   `agent_instructions` and read from there, but nothing in the UI writes them yet.
+* **No way to forget a stored API key** other than replacing it. Removing it needs an
+  explicit control, not a side effect of cancelling.
 * **File attachments are listed, not read** — files appear in the dropzone but are never
   attached to a message.
 
