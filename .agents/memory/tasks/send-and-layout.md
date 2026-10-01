@@ -282,3 +282,76 @@ where the code is `const send = async () => {`; the dot selector assumed `id` pr
 `class`; and a `doesNotMatch(/\.dot--error/)` matched the *comment in components.css*
 explaining why there deliberately is no `.dot--error`. That last one is the check working as
 intended in the wrong direction — the answer was already correct, and the comment says why.
+
+### Task 4 — `feat/api-key-edit-flow`
+
+**The security change is a deletion.** `storage.getApiKey()` is gone. `hasApiKey()`
+replaces it and returns a boolean, so there is no accessor left to read the credential
+with — the property is structural rather than a rule about how the value is used, and a
+rule would have to be re-checked every time someone added a caller. The mask is a constant
+derived from nothing: not from the key, not from its length, not from its tail, because a
+mask that varies leaks the length and a mask built from the secret means the secret was in
+that function.
+
+**Writing happens on exactly one path.** `onPrimary` is the only listener that calls
+`setApiKey`, and it returns early while the field is locked, so **Update key** is inert
+until **Edit** unlocks it. Enter follows the primary action and is equally inert while
+locked — otherwise Enter would save the mask back over a working key. That one is easy to
+miss and would have destroyed a working key silently.
+
+**Two bugs the browser run found, and one it did not.**
+
+The first was mine and was invisible in review: `promptForKey({force})` was wired
+backwards, so the boot gate opened **locked** with no key stored and Settings opened
+**editable** with one. Every static check passed, because each one asserted a property —
+this function calls `setApiKey` once, `Enter` guards on `locked` — rather than the
+behaviour the owner asked for. Only clicking through the modal in a browser showed the
+gate demanding a key it did not have.
+
+The second came out of the screenshot rather than an assertion. After **Edit**, the modal
+announced itself as **"One-time setup"** and asked you to paste a key — mid-replacement,
+with a key already stored. `setState` was doing two jobs: deciding the lock and deciding
+the framing, and unlocking is not the same as having no key. They are now separate
+(`setState` for the lock, `applyFraming` for whether a key exists), because conflating them
+means every transition re-answers a question the user did not ask.
+
+**A pre-existing CSS bug, found by looking.** The screenshot showed the **Edit** button
+still on screen after being hidden — and every DOM assertion said it was gone, because
+`element.hidden` reads `true` while the button is still painted. `.btn` is `display: flex`,
+which beats the UA stylesheet's `display: none` for the `hidden` attribute. The attribute
+was doing nothing on any element with a class that sets `display`. Fixed once, globally:
+
+```css
+[hidden] { display: none !important; }
+```
+
+This is worth recording as a class of defect rather than an instance. `element.hidden` is
+the obvious way to test that something is hidden and it is not sufficient; the check has to
+measure. Every other browser assertion here that reads a `hidden` attribute is now suspect
+in the same way, and `layout.js` and `runtime2.js` were re-run to confirm the global rule
+did not change anything they assert.
+
+#### Verification
+
+| Harness | Result | Pre-fix |
+|---|---|---|
+| `/tmp/pw/apikey.js` — 39 browser checks | 39/39, no page errors | fails |
+| `apikey.test.mjs` — the state machine and the security property | 15/15 | 2 pass / 10 fail |
+
+Storage is read directly out of `chrome.storage.local` at every step and compared against
+the value before it. A DOM assertion could not prove "only overwrite on Update key" — an
+implementation could write and then undo it and the input would look identical. So the load
+bearing checks are: **Edit then Cancel leaves the stored key byte-identical**; **Enter while
+locked writes nothing**; **a blank Update is refused and does not clear the existing key**;
+and **Update key writes the new value**. The browser also asserts the secret appears
+nowhere in `document.body.innerHTML` in either state.
+
+**One of my assertions was wrong about the product, not the code.** I asserted that
+cancelling the boot gate leaves Send disabled. It does not — `renderSendState` only runs at
+boot step 2, which the gate prevents, so the button keeps its markup default. That is
+deliberate and already documented in `app.js`: the catch shows *why* the app is unusable
+under Send and wires **Settings** to reload. The real requirement is that the reason is
+visible and there is a way back, so that is what the check asserts now. The code was right
+and the test was not.
+
+185 Node checks and all four browser suites pass.

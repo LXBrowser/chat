@@ -396,7 +396,6 @@ a.card:hover {
 
 .modal__input {
   width: 100%;
-  margin: 14px 0 10px;
   padding: 10px 13px;
   border: 1px solid var(--hairline);
   border-radius: var(--radius-sm);
@@ -404,6 +403,43 @@ a.card:hover {
   color: var(--ink-900);
   font-family: var(--mono);
   font-size: 13px;
+}
+
+/* A locked field says so by looking uneditable rather than by looking broken: the browser
+   paints a readonly input muted, and this makes that the same muted grey the rest of the
+   interface uses for a value it is showing you. */
+.modal__input[readonly] {
+  background: var(--silver-050);
+  color: var(--ink-500);
+}
+
+/* The field and its Edit button, on one row. The input's `margin: 0` here is what lets
+   the flex gap — not a margin on one child — separate them, which is the same rule the
+   composer's column already uses. */
+.keyfield {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 10px;
+}
+
+.keyfield .modal__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+}
+
+.keyfield .btn {
+  flex: none;
+}
+
+/* Explains the mask. --ink-500 on the modal panel, which is --surface-solid, so the
+   contrast accessibility.md names for glass does not apply here. */
+.modal__hint {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-500);
 }
 
 .modal__error {

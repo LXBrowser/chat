@@ -18,12 +18,18 @@ never committed.
 
 The flow is wired:
 
-* On load, the page checks `chrome.storage.local` for a key.
+* On load, the page checks `chrome.storage.local` for a key — for whether there is one, not
+  for what it is.
 * If none is stored, a blocking modal appears. Nothing else in the app runs until one is.
-* The modal accepts a paste and stores it under `chrome.storage.local`.
-* **Settings** replaces a stored key without a reload. Cancelling leaves the stored key
-  alone — refusing to replace a key you already have is a legitimate choice, not a failure.
-  There is no "forget this key" control.
+  The field is empty and editable, and the button is **Save key**.
+* If one is stored, the same modal opens from **Settings** with the field `readonly`,
+  showing a fixed mask, an **Edit** button, and a disabled **Update key**.
+* **Edit** clears the field, makes it editable, and enables **Update key**. Nothing is
+  written until you click it.
+* **Update key** is the only action that writes. **Cancel** writes nothing and restores
+  the state the modal opened in — on first run it still leaves the app gated, because
+  declining to configure a key is a decision rather than a fault.
+* There is no "forget this key" control.
 
 The paste is *not* validated against OpenRouter before being stored. Doing that costs a
 request and gives a slower first-run; the first real send is where a bad key surfaces, and
@@ -41,6 +47,10 @@ it surfaces with OpenRouter's own error.
   worker's own context and uses it in the `Authorization` header. The key is never sent
   over the message port, so it cannot appear in the DOM, in a devtools dump, or in an
   error message shown in the interface.
+* **There is no way to read it from the page, even by accident.** `storage.getApiKey()`
+  is deleted rather than merely unused — the only key accessor left is `hasApiKey()`,
+  which returns a boolean. The modal's input is a constant mask derived from nothing, so
+  a stored key is not in the DOM either, and nothing in the page can put it there.
 
 ## Models
 
