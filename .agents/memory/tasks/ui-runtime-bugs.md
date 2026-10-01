@@ -118,7 +118,9 @@ the `data-*` *names* — `app.js` selects on them, so renaming one silently re-b
 handler it was supposed to serve. Task 3 touches `app.js` only and must not reorder `boot()`:
 the gate-before-wiring sequence is what makes the cancel path recoverable, and moving
 listeners earlier would let a half-wired page look alive. Task 4 depends on the honesty of
-the documentation, which is that no control in this stack has been observed working.
+the documentation, which — written before task 2 ran — said no control in this stack had
+been observed working. **Task 2 falsified that**, and task 4 rewrote it rather than keeping
+it: the interface is confirmed in a browser, the request path is not.
 
 ### Task 2 — `fix/dataset-attributes`
 
@@ -177,3 +179,20 @@ name says where to look, the message says what happened, and neither alone was e
 no case blames the gate. A second check, `/tmp/wt/bootsteps.test.mjs`, 11 assertions, keeps
 the header's load-order list and the step labels from drifting apart — which they had
 already done once, before the numbers meant anything.
+### Task 4 — `docs/ui-runtime-bugs-release`
+
+Changelog, setup checklist, repository state, overview, and this record.
+
+**The documentation claim this task had to fix was written in task 1 and was wrong by the
+time task 4 started.** Task 1 predicted that task 4 would document "that no control in this
+stack has been observed working", and task 2 falsified it. Rewriting the docs to the
+measured position is the whole job here: the interface is confirmed in a browser, the
+request path is not, and the two are now separated explicitly in all four documents rather
+than merged into one hedge.
+
+The counts were re-derived rather than carried over: 122 Node checks, 19 browser checks, and
+the four Chrome runs.
+
+**The setup checklist's scope is now split.** Step 1 has been driven. Steps 2–12 begin at
+**Send something** and need a billable call, so they have never been run by anyone and are
+labelled as such rather than presented as a passed list.
