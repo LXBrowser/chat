@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "@lxbrowser/chat",
+  "version": "0.1.0",
+  "description": "Multi-Agent Chat — a new tab workspace with a main agent, sub-agents, and a built-in search-and-read tool.",
+
+  "minimum_chrome_version": "116",
+
+  "chrome_url_overrides": {
+    "newtab": "src/ui/index.html"
+  },
+
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; style-src 'self'"
+  },
+
+  "icons": {
+    "128": "src/ui/icons/icon-128.png"
+  }
+}

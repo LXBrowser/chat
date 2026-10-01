@@ -33,7 +33,7 @@ directory. Open a new tab. Full walkthrough in
 Verify the database layer from the new-tab console:
 
 ```js
-const db = await import('./db.js');
+const db = await import('../db.js');   // from the new-tab page, db.js is one level up
 const s = await db.createSession();
 await db.addMessage(s.id, 'user', 'hello');
 await db.listMessages(s.id);

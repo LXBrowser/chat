@@ -1,0 +1,452 @@
+/* ===========================================================================
+   components.css — the shared component library
+   Source: .agents/design/components.md
+   Class names are used exactly as the design system names them.
+   =========================================================================== */
+
+/* --- Panel -------------------------------------------------------------- */
+
+.panel {
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-sm);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+
+/* --- Buttons ------------------------------------------------------------ */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 17px;
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;              /* pill */
+  background: var(--glass-strong);  /* readable even without blur */
+  color: var(--ink-700);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color .15s ease, transform .15s ease, box-shadow .15s ease;
+}
+
+.btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.btn:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn--primary {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+  border-color: transparent;
+  color: var(--white);
+}
+
+.btn--sponsor {
+  background: linear-gradient(135deg, var(--sponsor) 0%, #b32a5b 100%);
+  border-color: transparent;
+  color: var(--white);
+}
+
+.btn-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* --- Badges and chips --------------------------------------------------- */
+
+.badge {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.badge--ok   { background: var(--ok-soft);   color: var(--ok); }
+.badge--warn { background: var(--warn-soft); color: var(--warn); }
+
+.chip-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--hairline);
+  background: var(--glass-faint);
+  font-size: 11px;
+  color: var(--ink-500);
+}
+
+/* --- Callouts ----------------------------------------------------------- */
+
+.callout {
+  display: flex;
+  gap: 11px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--hairline);
+  background: var(--accent-soft);
+  font-size: 13px;
+}
+
+.callout__icon {
+  flex: none;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.callout--warn {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.callout--danger {
+  background: var(--sponsor-soft);
+  color: var(--sponsor);
+}
+
+/* --- Eyebrow and lead --------------------------------------------------- */
+
+.eyebrow {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--ink-400);
+}
+
+.lead {
+  margin: 0;
+  color: var(--ink-500);
+}
+
+/* --- Code --------------------------------------------------------------- */
+
+pre {
+  margin: 0;
+  padding: 13px 15px;
+  border-radius: var(--radius-sm);
+  background: #1c2431;
+  color: #e2e7ee;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-x: auto;
+}
+
+code {
+  font-family: var(--mono);
+  font-size: .92em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+pre code {
+  padding: 0;
+  background: none;
+  color: inherit;
+}
+
+/* --- Definition list ---------------------------------------------------- */
+
+.deflist {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+}
+
+.deflist__row {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.deflist__row:last-child {
+  border-bottom: 0;
+}
+
+.deflist__term {
+  font-weight: 600;
+  color: var(--ink-900);
+}
+
+/* --- Tables ------------------------------------------------------------- */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 8px 11px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+th {
+  color: var(--ink-900);
+  font-weight: 600;
+}
+
+/* --- Cards -------------------------------------------------------------- */
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(248px, 1fr));
+  gap: 14px;
+}
+
+.card {
+  display: block;
+  padding: 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--glass-border);
+  background: var(--glass);
+  box-shadow: var(--shadow-sm);
+  color: inherit;
+  text-decoration: none;
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+
+a.card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
+}
+
+.card__title {
+  font-weight: 600;
+  color: var(--ink-900);
+  margin: 0 0 5px;
+}
+
+.card__desc {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-500);
+}
+
+/* --- Breadcrumbs -------------------------------------------------------- */
+
+.breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--ink-400);
+}
+
+.breadcrumbs a {
+  color: var(--accent-strong);
+  text-decoration: none;
+}
+
+.breadcrumbs a:hover {
+  text-decoration: underline;
+}
+
+.breadcrumbs .sep {
+  color: var(--silver-400);
+}
+
+/* ===========================================================================
+   Agent status dropdown — OPAQUE, NOT GLASS
+   Source: .agents/design/overlay-opacity.md
+
+   This menu sits over the message list. Selecting an agent must never show the
+   text behind it, and a translucent panel nested inside the blurred centre
+   pane can lose its background entirely where backdrop-filter is unavailable.
+   =========================================================================== */
+
+.agent-select {
+  position: relative;
+  flex: none;
+}
+
+.agent-select__trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  /* Opaque on purpose. Do not change this to var(--glass). */
+  background: var(--surface-solid);
+  color: var(--ink-900);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.agent-select__trigger::after {
+  content: "▾";
+  color: var(--ink-400);
+}
+
+.agent-select__menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 5px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  /* Opaque on purpose. No backdrop-filter on a content-covering overlay. */
+  background: var(--surface-solid);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: var(--shadow-md);
+  list-style: none;
+  margin: 0;
+}
+
+.agent-select__menu[hidden] {
+  display: none;
+}
+
+.agent-select__option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--ink-700);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.agent-select__option:hover,
+.agent-select__option:focus-visible {
+  background: var(--accent-soft);
+}
+
+.agent-select__option.is-selected {
+  background: var(--accent-soft);
+  font-weight: 600;
+  color: var(--ink-900);
+}
+
+.agent-select__empty {
+  padding: 9px 10px;
+  color: var(--ink-400);
+  font-size: 12px;
+}
+
+/* Status dot. The state is also carried by the label text — colour alone would
+   fail for a user who cannot distinguish the two hues. */
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--silver-500);
+}
+
+.dot--running { background: var(--accent); }
+.dot--done   { background: var(--ok); }
+.dot--error  { background: var(--sponsor); }
+
+/* ===========================================================================
+   Modal — OPAQUE, NOT GLASS
+   Source: .agents/design/overlay-opacity.md
+   =========================================================================== */
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.modal[hidden] {
+  display: none;
+}
+
+.modal__scrim {
+  position: absolute;
+  inset: 0;
+  /* Opaque scrim. The modal is modal — nothing behind it may be readable. */
+  background: rgba(27, 36, 48, .55);
+}
+
+.modal__panel {
+  position: relative;
+  width: 100%;
+  max-width: 460px;
+  padding: 26px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  background: var(--surface-solid);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: var(--shadow-md);
+}
+
+.modal__title {
+  margin: 0 0 6px;
+  font-size: 18px;
+}
+
+.modal__input {
+  width: 100%;
+  margin: 14px 0 10px;
+  padding: 10px 13px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+  color: var(--ink-900);
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+.modal__error {
+  color: var(--sponsor);
+  font-size: 12px;
+  min-height: 1em;
+}
+
+.modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}

@@ -68,3 +68,45 @@ the *tree list*, not to the *index placement* rule.
 names, same values, no renaming. The agent-status dropdown and the OpenRouter modal must
 be opaque, per `overlay-opacity.md`. Anything else task 3 styles should be a component from
 `components.md` rather than new CSS.
+
+### Task 3 — `feat/chat-extension`
+
+The static extension shell.
+
+**Landed.**
+
+* `manifest.json` — MV3, `chrome_url_overrides.newtab` → `src/ui/index.html`, a
+  `content_security_policy` forbidding remote code, and a generated 128px icon.
+* `src/db.js` — three object stores, every request promise-wrapped.
+* `src/ui/index.html` — three floating, independently scrollable panes.
+* `src/ui/css/{tokens,layout,components}.css`.
+
+**No permissions, and no service worker.** Both are deliberate. The extension loads and
+renders without them; `host_permissions` arrive with the background fetcher, which is the
+first thing that needs them.
+
+**No `app.js`.** The `<script>` tag is absent and the page references it in a comment,
+rather than shipping a 404 in the console. Every control is inert by design.
+
+**Tokens copied verbatim**, per the rule task 2 set. `src/ui/css/tokens.css` renames
+nothing and changes no value — the design system and the extension cannot drift because
+neither is allowed to edit the other's copy.
+
+**Two decisions worth knowing.**
+
+`db.js` derives `message_index` from the current count rather than accepting it from the
+caller, so a message cannot be written with a gap or a duplicate. And the
+`chat_messages.session_id` → `chat_sessions.id` foreign key is checked in `withTx` before
+the insert, because IndexedDB has no native constraint.
+
+**Verified:** `db.js` parses clean under `node --check`; the manifest parses as JSON; every
+stylesheet the page references exists. **Not verified — no Chrome in this Codespace:** the
+page rendering, and the `db.js` runtime round-trip. That check is written up in
+`wiki/environments/setup.md` for the owner to run.
+
+**What the next task now depends on.** `index.html` ends with a comment marking exactly
+where `<script type="module" src="app.js">` goes. The logic pass adds it there, and
+`app.js` imports `db.js` as `../db.js` — one directory up, which is also what the console
+verification snippet in `wiki/environments/setup.md` uses. The manifest needs
+`host_permissions` and a `background` service worker when the fetcher lands, and the
+`chrome.storage.local` key store when the modal is wired.
