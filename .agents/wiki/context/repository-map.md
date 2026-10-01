@@ -105,7 +105,11 @@ the snippet is in
   foreign keys; the wrapper checks. Calling a store directly bypasses it.
 * **The manifest grants `https://*/*`.** It is deliberate and it is broad — `read_page`
   follows search results to hosts that cannot be enumerated in advance. The guards are in
-  the tool, not in the permission.
+  the tool, not in the permission, and they resolve DNS over HTTPS — so
+  `read_page` **fails closed** on a network that blocks `cloudflare-dns.com`.
+* **Every redirect goes back through the `read_page` guard.** That is why the fetch uses
+  `redirect: 'manual'`: a follow would let a public page point the request at a private
+  address after the guard had said yes.
 * **Tools are split by where they can run.** A tool that only fetches goes in
   `src/tools.js` and the worker runs it; a tool that touches the interface goes in
   `src/ui/lib/page-tools.js` and reaches the worker over the port. Adding one of either

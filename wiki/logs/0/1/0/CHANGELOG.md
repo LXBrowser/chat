@@ -39,8 +39,8 @@ are stored. The main agent can search the web, read what it finds, and rename th
 
 * `manifest.json` — MV3, overriding the new tab, with a content security policy that
   forbids remote code, a module service worker, and host permissions for OpenRouter,
-  DuckDuckGo, and `https://*/*`. No API permissions: no `activeTab`, no `tabs`, no
-  `scripting`.
+  DuckDuckGo, a DNS resolver, and `https://*/*`. No API permissions: no `activeTab`, no
+  `tabs`, no `scripting`.
 * `src/db.js` — three object stores behind a promise wrapper, so no calling code handles
   a raw `IDBRequest`. `message_index` is derived rather than accepted, and the
   `chat_messages.session_id` foreign key is enforced in code, because IndexedDB has no
@@ -119,9 +119,15 @@ are stored. The main agent can search the web, read what it finds, and rename th
   comments removed, entities decoded in a single pass. Long pages are truncated; a page with
   no readable text is an error rather than an empty answer.
 * **`read_page` is guarded**, because a tool that fetches whatever the model names is the
-  prompt-injection shape: https only, local and private addresses refused, downloads capped
-  at 5 MB by content-length, and non-text content types refused. These are guards, not a
-  sandbox — the instruction file tells the main agent to treat page content as data.
+  prompt-injection shape. At every hop, including every redirect hop: https only; the
+  hostname **resolved and every returned address checked**, refusing loopback, private,
+  link-local and reserved IPv4, `169.254.0.0/16` where cloud metadata lives, and any IPv6
+  outside `2000::/3` — including `::ffff:127.0.0.1` and the other ways an IPv4 address is
+  dressed as IPv6; bare and `.local` / `.internal` names refused outright; **fails closed**
+  if the resolver is unreachable; downloads capped at 5 MB by content-length; non-text
+  content types refused. Resolution is over DNS-over-HTTPS because the guard trusts the
+  answer and a plain lookup can be forged in transit. These are guards, not a sandbox — the
+  instruction file tells the main agent to treat page content as data.
 * **`update_chat_title`** renames the current session in `chat_sessions` and repaints the
   title and the history list. The instruction file tells the model to use it once, with a
   title that names the subject rather than repeating the question.
@@ -177,17 +183,19 @@ per round.
 with no Chrome.
 
 Verified: every module passes `node --check`; every import and every DOM id target
-resolves. 105 checks run under Node against stubbed `chrome` and `fetch` — 26 on the
+resolves. 102 checks run under Node against stubbed `chrome` and `fetch` — 26 on the
 service worker (SSE handling, the tool loop, and assertions that the key never appears in
-anything the worker posts), 11 on the model settings, 11 on the port client, 28 on the
-tools (search parsing, HTML-to-text, entity decoding, and both network tools against a
-stubbed fetch), 8 on the page side of a tool round-trip, and 21 on the agent registry
-against the auto-remove contract.
+anything the worker posts), 11 on the model settings, 11 on the port client, 46 on the
+tools (search parsing, HTML-to-text, entity decoding, the SSRF guard including rebinding
+across a redirect, and both network tools against a stubbed fetch), 8 on the page side of
+a tool round-trip, and 21 on the agent registry against the auto-remove contract.
 
 Not verified: the DOM path and the real network round-trip — `app.js` boot order, the
 modal, the panes rendering, the streaming caret, whether OpenRouter accepts these requests
-or the tool schemas at all, and whether the DuckDuckGo endpoint still serves markup this
-parser recognises. The tool loop has been driven only by scripted SSE bodies.
+or the tool schemas at all, whether the DuckDuckGo endpoint still serves markup this
+parser recognises, and whether Chrome returns a readable `Location` for a
+`redirect: 'manual'` response as the redirect guard assumes. The tool loop has been driven
+only by scripted SSE bodies.
 
 The procedure is in [Setup](../../../../environments/setup.md).
 
@@ -206,3 +214,6 @@ The procedure is in [Setup](../../../../environments/setup.md).
 * `https://*/*` is granted so `read_page` can follow a search result to an arbitrary host.
   Chrome warns about it at install time. It is deliberate, and the tool's own guards are in
   `src/tools.js` — see [Environment](../../../../environments/env.md).
+* **The `read_page` guard resolves DNS over HTTPS** and therefore needs
+  `https://cloudflare-dns.com/*`. It also fails closed: a network that blocks that
+  resolver makes `read_page` stop working rather than start reading unchecked hosts.

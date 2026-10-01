@@ -25,7 +25,7 @@ here, and the override table in the root index is empty.
 * `.agents/wiki/context/repository-map.md` — orientation page.
 * `.agents/memory/` — this file and the task records.
 * `wiki/` — `information/overview.md`, `environments/setup.md`, `environments/env.md`.
-* `manifest.json` — MV3, new-tab override, module service worker, three host permissions.
+* `manifest.json` — MV3, new-tab override, module service worker, four host permissions.
 * `src/background.js` — the service worker. Every OpenRouter call, the tool loop, and the
   only place the API key is read.
 * `src/tools.js` — the tool schemas, and the two network tools the worker runs.
@@ -82,7 +82,9 @@ models.
 * **The service worker is terminated when idle.** A termination mid-stream loses that
   request; the port reconnects on the next send.
 * **`https://*/*` is granted** so `read_page` can follow a search result to any host. It is
-  deliberate and it is broad; the guards are in the tool, not the permission.
+  deliberate and it is broad; the guards are in the tool, not the permission. The guard
+  resolves DNS over HTTPS and **fails closed**, so a network that blocks
+  `cloudflare-dns.com` stops `read_page` working rather than letting it read unchecked.
 * **The search parser is the fragile part.** It reads DuckDuckGo's keyless HTML with no API
   contract behind it. If search starts returning nothing, that is where to look.
 * **`deepseek/deepseek-v4-flash` is unverified** — used exactly as the owner gave it, and
@@ -91,15 +93,18 @@ models.
 ## What has not been verified
 
 **The extension has never been loaded in a browser.** There is no Chrome in the authoring
-environment. Every module passes `node --check`, every import and DOM id resolves, and 105
+environment. Every module passes `node --check`, every import and DOM id resolves, and 102
 checks run under Node against stubbed `chrome` and `fetch` cover the service worker's SSE
 handling and tool loop, the model settings, the port client, the search parser and HTML
-extraction, the page half of a tool round-trip, and the agent registry.
+extraction, the `read_page` guard, the page half of a tool round-trip, and the agent
+registry.
 
 But the DOM path and the real network round-trip are untested: `app.js` boot order, the
 modal, the panes rendering, the streaming caret, whether OpenRouter accepts these requests
-or these tool schemas at all, and whether DuckDuckGo still serves markup the parser
-recognises. The tool loop has only been driven by scripted SSE bodies.
+or these tool schemas at all, whether DuckDuckGo still serves markup the parser
+recognises, and whether Chrome returns a readable `Location` for a `redirect: 'manual'`
+response — which the redirect guard depends on. The tool loop has only been driven by
+scripted SSE bodies.
 
 The procedure is in `wiki/environments/setup.md`: load unpacked, walk the working list
 above, then run the `db.js` round-trip and its two negative paths from the console.

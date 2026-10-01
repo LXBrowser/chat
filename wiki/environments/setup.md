@@ -15,10 +15,10 @@ There is nothing to install and nothing to build. The repository is loaded unpac
 4. Select the **repository root** — the directory containing `manifest.json`, not `src/`.
 5. Confirm the extension appears in the list as `@lxbrowser/chat` with no errors.
 
-The manifest now declares `host_permissions` for OpenRouter, DuckDuckGo, and `https://*/*`.
-Chrome shows a permission warning on the card for the last one — that is expected. It is
-granted so the built-in `read_page` tool can fetch the URLs search returns, and
-[Environment](env.md) explains what that grant does and does not allow.
+The manifest now declares `host_permissions` for OpenRouter, DuckDuckGo, a DNS resolver,
+and `https://*/*`. Chrome shows a permission warning on the card for the last one — that
+is expected. It is granted so the built-in `read_page` tool can fetch the URLs search
+returns, and [Environment](env.md) explains what that grant does and does not allow.
 
 ## Open it
 
@@ -101,6 +101,8 @@ The reason appears under the Send button and in the agent log. The common ones:
 | `Stopped after 6 rounds of tool calls without an answer` | The model kept asking for tools instead of answering. Rephrase, or drop the custom model box for a known preset. |
 | `search_web failed: No results for "…"` | DuckDuckGo rate-limited, or its page structure changed. The latter is `parseSearchResults` in `src/tools.js`. |
 | `Only https URLs can be read` | A tool was pointed at a local file or a plain-http link. Expected — the model has to follow a search result instead. |
+| `Could not check where <host> points` | The DNS-over-HTTPS lookup failed or returned nothing, so the page was not read. The guard fails closed on purpose; retry, and check for a network that blocks `cloudflare-dns.com`. |
+| `… resolves to 169.254.169.254, which is a link-local address` | The guard caught a page trying to steer the agent at cloud credentials. This is the guard working. |
 
 ## Verifying the database layer
 

@@ -71,12 +71,14 @@ and they need different hosts granted:
 |---|---|---|
 | Model completions | `https://openrouter.ai/*` | One known API. |
 | Web search | `https://html.duckduckgo.com/*` | One known search endpoint. |
+| Resolving a hostname | `https://cloudflare-dns.com/*` | The `read_page` guard asks one resolver where a name points. |
 | Reading a page | `https://*/*` | The URL comes from search results, so it cannot be enumerated in advance. |
 
 ```json
 "host_permissions": [
   "https://openrouter.ai/*",
   "https://html.duckduckgo.com/*",
+  "https://cloudflare-dns.com/*",
   "https://*/*"
 ]
 ```
@@ -85,18 +87,29 @@ No API permissions — no `activeTab`, no `tabs`, no `scripting`.
 
 ### `https://*/*` is a broad grant
 
-The third permission is the one to look at before loading the extension. It lets the
-worker fetch **any https URL the model names** — which means any URL a web page managed to
-put in front of the model, including one crafted to look like an internal host. Chrome will
-warn about this at install time. It is granted deliberately, because `read_page` is
-useless without it, but the safeguards live in the tool rather than in the permission:
+The last permission is the one to look at before loading the extension. It lets the worker
+fetch **any https URL the model names** — which means any URL a web page managed to put in
+front of the model, including one crafted to look like an internal host. Chrome will warn
+about this at install time. It is granted deliberately, because `read_page` is useless
+without it, but the safeguards live in the tool rather than in the permission.
 
-* **https only.** Other schemes are refused before the fetch.
-* **Local addresses are refused** — `localhost`, `127.0.0.0/8`, `10.0.0.0/8`,
-  `192.168.0.0/16`, `172.16.0.0/12`, `.local`, `::1`, `0.0.0.0`. Without this, "fetch
-  whatever the agent asks for" becomes "reach the machine the browser is running on".
-* **Downloads are bounded** — 5 MB by content-length, before the body is read.
-* **Only text is returned** — a page whose content type is not text is refused.
+Before every hop — **including every redirect hop** — `read_page`:
+
+* accepts **https only**;
+* **resolves the hostname and checks the addresses**, refusing anything that is not
+  publicly routable: the loopback, private, link-local and reserved IPv4 ranges,
+  `169.254.0.0/16` where cloud metadata lives, and every IPv6 address outside the single
+  globally routable range `2000::/3` — including `::ffff:127.0.0.1` and the other ways an
+  IPv4 address can be dressed up as IPv6;
+* refuses a bare hostname or a `.local` / `.internal` name outright;
+* **fails closed** if the resolver is unreachable or reports nothing, rather than reading a
+  host it could not check;
+* bounds the download at 5 MB by content-length, before the body is read;
+* refuses a content type with no readable text.
+
+Resolution goes through DNS-over-HTTPS rather than a plain lookup, because the guard trusts
+the answer and a plain lookup can be forged by whatever is on the path. The trade is that
+Cloudflare sees the hostname — which it largely does anyway as the network's resolver.
 
 These are guards, not a sandbox. A tool that fetches model-supplied URLs is the standard
 prompt-injection shape, and the instruction file tells the Main Agent to treat page content

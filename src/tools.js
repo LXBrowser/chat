@@ -231,44 +231,32 @@ async function read_page({ url, max_chars } = {}) {
   const target = String(url ?? '').trim();
   if (!target) throw new Error('read_page needs a url.');
 
-  const parsed = new URL(target);
-
-  // https only, whatever the model asked for. A tool that will fetch whatever it is given
-  // must not also be a way to reach schemes the extension has no business touching.
-  if (parsed.protocol !== 'https:') {
-    throw new Error(`Only https URLs can be read — got ${parsed.protocol}//`);
-  }
-
-  if (isLocalHost(parsed.hostname)) {
-    throw new Error(`Refusing to read ${parsed.hostname} — it is a local address.`);
-  }
-
   const limit = clamp(Number.parseInt(max_chars, 10) || 8000, 500, 20000);
 
-  const response = await fetch(parsed.href, {
-    headers: { 'Accept': 'text/html,text/plain;q=0.9' },
-    redirect: 'follow',
-  });
+  // Every hop is checked, not just the URL that was handed over. Letting fetch follow
+  // redirects itself would mean a public page could bounce the request to a private one
+  // after the guard has already run and said yes.
+  const { response, url: finalUrl } = await fetchChecked(target);
 
   if (!response.ok) {
-    throw new Error(`${parsed.hostname} returned ${response.status}.`);
+    throw new Error(`${finalUrl.hostname} returned ${response.status}.`);
   }
 
   const type = response.headers.get('content-type') ?? '';
   if (type && !/text\/(html|plain)|application\/(xhtml\+xml|json)/i.test(type)) {
-    throw new Error(`${parsed.hostname} served ${type.split(';')[0]}, which has no readable text.`);
+    throw new Error(`${finalUrl.hostname} served ${type.split(';')[0]}, which has no readable text.`);
   }
 
   // Bounded by content-length when the server volunteers it. A multi-megabyte page would
   // otherwise be downloaded in full and then truncated.
   const declared = Number.parseInt(response.headers.get('content-length') ?? '', 10);
   if (Number.isFinite(declared) && declared > MAX_DOWNLOAD_BYTES) {
-    throw new Error(`${parsed.hostname} is ${Math.round(declared / 1024)} kB — too large to read.`);
+    throw new Error(`${finalUrl.hostname} is ${Math.round(declared / 1024)} kB — too large to read.`);
   }
 
   const text = htmlToText(await response.text()).slice(0, limit);
 
-  if (!text) throw new Error(`${parsed.hostname} had no readable text.`);
+  if (!text) throw new Error(`${finalUrl.hostname} had no readable text.`);
 
   return text;
 }
@@ -276,23 +264,305 @@ async function read_page({ url, max_chars } = {}) {
 /** 5 MB. Past this a page is not something to read, it is something to skip. */
 const MAX_DOWNLOAD_BYTES = 5 * 1024 * 1024;
 
+/** How many redirects to follow. Each one costs a full DNS check, so few. */
+const MAX_REDIRECTS = 3;
+
 /**
- * Blocks the obvious local addresses.
+ * Resolver used only to answer "where does this name point".
  *
- * The manifest only grants the `https` scheme, so most of this is unreachable, but a tool
- * that fetches a model-supplied URL is exactly the shape where a "fetch anything the
- * agent asks for" rule turns into reaching a machine on the user's own network. Cheap to
- * refuse.
+ * Over HTTPS so the answer cannot be forged on the way back — a plain UDP lookup could be
+ * answered by whatever is on the path, and the whole guard trusts this answer. It also
+ * means the hostname is visible to the resolver, which is a real cost of the design and
+ * little worse than fetching the name.
  */
-function isLocalHost(hostname) {
-  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');
-  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')) return true;
-  if (host === '::1' || host === '0.0.0.0') return true;
-  if (/^127\./.test(host)) return true;
-  if (/^10\./.test(host)) return true;
-  if (/^192\.168\./.test(host)) return true;
-  if (/^172\.(1[6-9]|2\d|3[01])\./.test(host)) return true;
-  return false;
+const DNS_ENDPOINT = 'https://cloudflare-dns.com/dns-query';
+
+/** A resolver that hangs must not hold the tool loop open. */
+const DNS_TIMEOUT_MS = 5_000;
+
+// ---------------------------------------------------------------------------
+// The guard
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetches a page, refusing at every hop to touch an address that is not publicly routable.
+ *
+ * @returns {Promise<{response: Response, url: URL}>} the final response and the URL that
+ * produced it, so an error names the host that actually answered.
+ */
+async function fetchChecked(rawUrl) {
+  let target = parseTarget(rawUrl);
+
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
+    await assertPublicHost(target);
+
+    const response = await fetch(target.href, {
+      headers: { 'Accept': 'text/html,text/plain;q=0.9' },
+      // Manual, so the next hop goes back through the guard rather than around it.
+      redirect: 'manual',
+    });
+
+    const location = redirectTarget(response);
+    if (!location) return { response, url: target };
+
+    target = parseTarget(new URL(location, target.href).href);
+  }
+
+  throw new Error(`Gave up after ${MAX_REDIRECTS} redirects.`);
+}
+
+/** Parses and scheme-checks a URL. https only, whatever the model asked for. */
+function parseTarget(raw) {
+  let parsed;
+
+  try {
+    parsed = new URL(String(raw).trim());
+  } catch {
+    throw new Error(`${raw} is not a URL.`);
+  }
+
+  // A tool that fetches whatever it is given must not also be a way to reach schemes the
+  // extension has no business touching.
+  if (parsed.protocol !== 'https:') {
+    throw new Error(`Only https URLs can be read — got ${parsed.protocol}//`);
+  }
+
+  return parsed;
+}
+
+/**
+ * Where a 3xx points, or null if this is not a redirect.
+ *
+ * A redirect with no readable `Location` is treated as final rather than followed, which
+ * fails closed: if the browser ever hands back an opaque redirect here, the loop stops
+ * instead of continuing against an unchecked target.
+ */
+function redirectTarget(response) {
+  if (response.status < 300 || response.status > 399) return null;
+  return response.headers.get('location');
+}
+
+/**
+ * Refuses a host that does not resolve to a publicly routable address.
+ *
+ * The check is on the **resolved address**, not on the text of the hostname. A name can
+ * point at `127.0.0.1`, and refusing the string `localhost` does nothing about it — which
+ * is why the name is only a cheap pre-filter and the address is what decides.
+ */
+async function assertPublicHost(target) {
+  const host = target.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+
+  if (isIpLiteral(host)) {
+    const why = privateReason(host);
+    if (why) throw new Error(`Refusing to read ${host} — it is ${why}.`);
+    return;
+  }
+
+  // Cheap, and catches the intranet names that have no public address to check anyway.
+  const name = localNameReason(host);
+  if (name) throw new Error(`Refusing to read ${host} — it is ${name}.`);
+
+  let addresses;
+  try {
+    addresses = await resolveAll(host);
+  } catch (err) {
+    // Fail closed. A guard that opens when the resolver is unavailable is not a guard, and
+    // the failure reaches the model as a tool result rather than being swallowed.
+    throw new Error(`Could not check where ${host} points, so it was not read (${err.message}).`);
+  }
+
+  // Every address, not the first. A hostile resolver can return one public address and one
+  // private one, and only the private one is interesting.
+  for (const address of addresses) {
+    const why = privateReason(address);
+    if (why) throw new Error(`${host} resolves to ${address}, which is ${why}. It was not read.`);
+  }
+}
+
+/** Every A and AAAA record for a name. Throws when there is nothing to read. */
+async function resolveAll(host) {
+  const [v4, v6] = await Promise.all([dnsQuery(host, 'A', 1), dnsQuery(host, 'AAAA', 28)]);
+
+  const addresses = [...v4, ...v6];
+  if (!addresses.length) throw new Error('it has no address');
+
+  return addresses;
+}
+
+async function dnsQuery(host, recordType, typeNumber) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), DNS_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(`${DNS_ENDPOINT}?name=${encodeURIComponent(host)}&type=${recordType}`, {
+      headers: { 'Accept': 'application/dns-json' },
+      signal: controller.signal,
+    });
+
+    if (!response.ok) throw new Error('the resolver returned an error');
+
+    const body = await response.json();
+    return (body.Answer ?? [])
+      .filter((answer) => answer.type === typeNumber && typeof answer.data === 'string')
+      .map((answer) => answer.data.toLowerCase());
+  } catch (err) {
+    throw new Error(err.name === 'AbortError' ? 'the resolver timed out' : err.message);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Names that are local by definition and have no public address to check. */
+function localNameReason(host) {
+  if (host === 'localhost' || host.endsWith('.localhost')) return 'a loopback name';
+  if (host.endsWith('.local')) return 'an mDNS name';
+  if (host.endsWith('.internal') || host.endsWith('.home.arpa')) return 'an intranet name';
+  // A single label has no public meaning — only a local resolver can answer it.
+  if (!host.includes('.')) return 'a bare hostname';
+  return null;
+}
+
+function isIpLiteral(host) {
+  return host.includes(':') || /^\d+\.\d+\.\d+\.\d+$/.test(host);
+}
+
+/**
+ * Why an address is not publicly routable, or null if it is.
+ *
+ * The IPv4 list is explicit because each entry is a place real data lives — 169.254.0.0/16
+ * above all, which is where cloud metadata sits and which is the single most valuable
+ * thing on a machine to be able to read. The IPv6 side needs no list: `2000::/3` is the
+ * only globally routable range, so unique-local, link-local, multicast, and the
+ * unspecified address all fall out of one comparison.
+ */
+function privateReason(address) {
+  const host = String(address).trim().toLowerCase().replace(/^\[|\]$/g, '');
+
+  if (host.includes(':')) {
+    const groups = parseIpv6(host);
+    if (!groups) return 'not a valid address';
+
+    // ::ffff:127.0.0.1 is a loopback address in IPv6 costume, and it is the form a bypass
+    // actually takes. Named so the refusal says why rather than just "not routable".
+    const mapped = ipv4MappedAddress(groups);
+    if (mapped) return privateReason(mapped);
+
+    return inPrefix(groups, GLOBAL_IPV6) ? null : 'not a globally routable IPv6 address';
+  }
+
+  const number = ipv4ToNumber(host);
+  if (number === null) return 'not a valid address';
+
+  for (const block of IPV4_BLOCKS) {
+    if (number >= block.start && number <= block.end) return block.label;
+  }
+
+  return null;
+}
+
+// Written as eight full groups: `parseIpv6` parses whole addresses, and `2000` on its own
+// is not one.
+const GLOBAL_IPV6 = ['2000:0:0:0:0:0:0:0', 3];
+
+const IPV4_BLOCKS = [
+  ['0.0.0.0', 8, 'this network'],
+  ['10.0.0.0', 8, 'a private address'],
+  ['100.64.0.0', 10, 'carrier-grade NAT'],
+  ['127.0.0.0', 8, 'a loopback address'],
+  ['169.254.0.0', 16, 'a link-local address — this is where cloud metadata lives'],
+  ['172.16.0.0', 12, 'a private address'],
+  ['192.0.0.0', 24, 'reserved'],
+  ['192.0.2.0', 24, 'reserved'],
+  ['192.88.99.0', 24, 'reserved'],
+  ['192.168.0.0', 16, 'a private address'],
+  ['198.18.0.0', 15, 'reserved'],
+  ['198.51.100.0', 24, 'reserved'],
+  ['203.0.113.0', 24, 'reserved'],
+  ['224.0.0.0', 4, 'multicast'],
+  ['240.0.0.0', 4, 'reserved'],
+].map(([prefix, bits, label]) => {
+  const start = ipv4ToNumber(prefix);
+  return { start, end: start + 2 ** (32 - bits) - 1, label };
+});
+
+/** An IPv4 address as a number, or null if the text is not one. */
+function ipv4ToNumber(text) {
+  const octets = text.split('.');
+  if (octets.length !== 4) return null;
+
+  let value = 0;
+  for (const octet of octets) {
+    if (!/^\d{1,3}$/.test(octet)) return null;
+    value = value * 256 + Number(octet);
+  }
+
+  return value;
+}
+
+/** The IPv4 an IPv4-mapped IPv6 address carries, or null if it is not that form. */
+function ipv4MappedAddress(groups) {
+  // ::ffff:a.b.c.d expands to five zero groups, ffff, then the two halves of the address.
+  if (groups.slice(0, 5).some((g) => g !== 0) || groups[5] !== 0xffff) return null;
+
+  const [a, b] = [groups[6] >> 8, groups[6] & 0xff];
+  const [c, d] = [groups[7] >> 8, groups[7] & 0xff];
+  return `${a}.${b}.${c}.${d}`;
+}
+
+/** Whether the leading `bits` bits of `groups` match `prefix`. */
+function inPrefix(groups, [head, bits]) {
+  const prefix = parseIpv6(head);
+  if (!prefix) return false;
+
+  for (let i = 0; i < 8; i += 1) {
+    const remaining = bits - i * 16;
+    if (remaining <= 0) break;
+
+    const mask = remaining >= 16 ? 0xffff : (0xffff << (16 - remaining)) & 0xffff;
+    if ((groups[i] & mask) !== (prefix[i] & mask)) return false;
+  }
+
+  return true;
+}
+
+/**
+ * Expands an IPv6 literal to eight 16-bit groups.
+ *
+ * Handles `::` compression and a trailing dotted quad — which is how an IPv4-mapped address
+ * is normally written, `::ffff:127.0.0.1` — so the form that matters most to this guard is
+ * not the one that would otherwise be dropped as malformed.
+ *
+ * @returns {number[]|null} the groups, or null if the text is not an address.
+ */
+function parseIpv6(text) {
+  let value = text.trim().toLowerCase();
+
+  const embedded = /(\d+\.\d+\.\d+\.\d+)$/.exec(value);
+  if (embedded) {
+    const number = ipv4ToNumber(embedded[1]);
+    if (number === null) return null;
+    value = `${value.slice(0, embedded.index)}${(number >>> 16).toString(16)}:${(number & 0xffff).toString(16)}`;
+  }
+
+  const halves = value.split('::');
+  if (halves.length > 2) return null;
+
+  const head = halves[0] ? halves[0].split(':') : [];
+  const tail = halves[1] ? halves[1].split(':') : [];
+
+  const groups = [];
+  for (const part of head.concat(tail)) {
+    if (!/^[0-9a-f]{1,4}$/.test(part)) return null;
+    groups.push(Number.parseInt(part, 16));
+  }
+
+  // Only an explicit `::` can stand for missing groups, and it stands for at least one.
+  if (halves.length === 2) {
+    if (head.length + tail.length > 7) return null;
+    groups.splice(head.length, 0, ...Array(8 - head.length - tail.length).fill(0));
+  }
+
+  return groups.length === 8 ? groups : null;
 }
 
 // ---------------------------------------------------------------------------

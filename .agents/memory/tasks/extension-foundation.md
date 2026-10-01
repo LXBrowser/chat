@@ -290,9 +290,18 @@ deltas reach the transcript; tool-call fragments are JSON arriving a few charact
 time and would fill the answer with a broken argument string.
 
 **`read_page` is guarded,** because a tool that fetches whatever the model names is the
-prompt-injection shape: https only, `localhost` and the private ranges refused, downloads
-capped at 5 MB by content-length, and non-text content types refused. These are guards, not
-a sandbox, and the seed prompt tells the Main Agent to treat page content as data.
+prompt-injection shape. At every hop — **including every redirect hop** — https only; the
+hostname **resolved and every returned address checked**; loopback, private, link-local and
+reserved IPv4 refused, `169.254.0.0/16` (cloud metadata) refused explicitly, and any IPv6
+outside `2000::/3` refused, which covers `::ffff:127.0.0.1` and every other way an IPv4
+address is dressed as IPv6. It **fails closed** when the resolver is unreachable. Downloads
+are capped at 5 MB by content-length and non-text content types refused. These are guards,
+not a sandbox, and the seed prompt tells the Main Agent to treat page content as data.
+
+Resolution goes through **DNS-over-HTTPS** rather than a plain lookup, because the guard
+trusts the answer and a plain lookup can be forged by whatever is on the path. The cost is
+a fourth host permission — `https://cloudflare-dns.com/*` — and an extra round-trip per
+`read_page`.
 
 **`search_web` distinguishes empty from broken.** "No results" and "the parser broke" look
 identical from outside the extension, and only one of them is the model's fault to work
@@ -311,18 +320,32 @@ every snippet up one when a single result has no snippet. `decodeEntities` never
 `#`, so `&#65;` stayed as written. And `requestPageTool` reading `call.function.arguments`
 after its caller had been changed to pass a flat shape.
 
-**Verified.** 105 checks across five scripts under Node against stubbed `chrome` and
+**A second pass, prompted by the owner approving a repository rule, closed three real
+holes in the guard** that the first version of it did not cover. `169.254.0.0/16` was
+never refused — so the cloud metadata address, the most valuable thing on a machine to be
+able to read, was reachable. IPv6 unique-local and link-local were never refused, and
+`::ffff:127.0.0.1` was not recognised as loopback. And redirects were followed with
+`redirect: 'follow'`, which meant a public page could bounce the request inward *after* the
+guard had run. It now resolves and checks every address at every hop, and fails closed.
+Writing the rule is what surfaced these: the rule says "on the resolved address, not the
+hostname's text", and the code was doing the opposite.
+
+**Verified.** 102 checks across five scripts under Node against stubbed `chrome` and
 `fetch`: 26 on the service worker (SSE handling, the tool loop, multi-call rounds, the loop
 bound, page-tool round-trips, and assertions that the key never appears in anything the
-worker posts), 11 on the model settings, 11 on the port client, 28 on the tools (search
-parsing, HTML-to-text, entity decoding, and both network tools against a stubbed fetch), 8
-on the page half of a tool round-trip, and 21 on the agent registry. Every module passes
-`node --check`; every import and DOM id resolves.
+worker posts), 11 on the model settings, 11 on the port client, 46 on the tools (search
+parsing, HTML-to-text, entity decoding, the guard including DNS rebinding across a redirect,
+and both network tools against a stubbed fetch), 8 on the page half of a tool round-trip,
+and 21 on the agent registry. Every module passes `node --check`; every import and DOM id
+resolves.
 
 **Not verified.** The DOM path, the real OpenRouter round-trip including whether it accepts
 these tool schemas, and whether DuckDuckGo still serves markup `parseSearchResults`
-recognises. The tool loop has only been driven by scripted SSE bodies. No Chrome in this
-environment; the check is written up in `wiki/environments/setup.md`.
+recognises. Also unverified: that Chrome returns a readable `Location` header for a
+`redirect: 'manual'` response, which the redirect guard depends on — if it does not, the
+guard fails closed and `read_page` stops following redirects rather than becoming unsafe.
+The tool loop has only been driven by scripted SSE bodies. No Chrome in this environment;
+the check is written up in `wiki/environments/setup.md`.
 
 As before, the scripts were run from `/tmp` and **not committed**; the repository has no
 test runner and adding one was not in scope.
