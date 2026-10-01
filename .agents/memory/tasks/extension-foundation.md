@@ -425,3 +425,67 @@ Task 7 makes that possible; it does not assert it happened.
 **Not verified — still.** The rendered result. This remains a visual fix, and a visual fix
 proves out in a browser, not in a test. The owner re-runs the checklist in
 `wiki/environments/setup.md` after a reload; the right pane is where to look.
+
+### Task 7, fix pass — `fix/csp-and-composer-layout`
+
+**Ten attributes, five classes.** The attributes were not ten unrelated styles: four were
+`margin:0` on an eyebrow sitting flush on its control, three were `font-size:12px` on a
+hint, two were `margin-top:14px` in the centre pane's block flow, and one was the pane
+body's flex treatment. That is `.eyebrow--flush`, `.hint`, `.push-top` and
+`.pane__body--stack`. Giving each occurrence its own class would have shipped the same
+repetition the attributes had.
+
+**The layout fix, and why a percentage was the wrong tool.** `.composer` took
+`height: 100%`. Inside a flex column, a percentage height resolves against the container
+and knows nothing about its siblings — so the composer claimed the body's whole height
+*plus* the title bar, toggle, model picker and dropzone above it. `.composer__input`'s
+`min-height: 120px` then stopped it handing the space back. The composer now takes
+`flex: 1 1 200px`.
+
+**The floor moved from the input to the container, and that is the part worth keeping.**
+A `min-height` on the textarea stops it shrinking at all, so the pane runs out of room and
+the column overflows anyway. A floor on the *composer* means that below it the pane body
+scrolls — which is what already happens to any pane that runs short — and the composer
+stays usable at 140px. The growing part is the textarea; the fixed part is the unit around
+it, and only one of those two should carry a minimum.
+
+**The toggle's colour is a rule now.** `renderMultiAgent` no longer assigns
+`btn.style.color` or `dot.style.background`. Both were *legal* — a CSSOM property
+assignment is not the `style` attribute, and `style-src 'self'` forbids only the attribute —
+so this was not a violation being fixed. It was the same fragile pattern, and the button
+already carries `aria-pressed`, which the renderer's own comment names as the real state
+with the colour only representing it. The rule keys off that attribute, so the state and
+its representation cannot disagree. `data-on` went with it: two attributes mirroring one
+state is the same drift, arriving later.
+
+**The dead `.dot` id went too.** `multiagent-dot` existed only for the line this removed;
+the element stays, because the rule styles `.dot` through its parent. `id` attributes that
+nothing references are how a page ends up with two ways to name one thing.
+
+**Verified.** No `style` attribute and no `.style.` assignment anywhere in `src/`. All 47
+classes used in `index.html` are defined in the stylesheets. Both stylesheets brace-balance.
+`views.js` passes `node --check`, and **the 102 checks still pass** — the regression suite
+is the one thing here that could have been broken silently, since nothing in this task
+touches JavaScript behaviour beyond the two deleted lines.
+
+**Still not verified, and it is the whole point.** Nothing here has been rendered. No
+Chrome exists in the authoring environment, and the CSP error meant the previous run never
+saw the interface with its styles applied either — so there is no "it looked fine before"
+baseline to have regressed from. The fix is correct by construction and by inspection of
+the flex rules, which is a weaker claim than it sounds like. `wiki/environments/setup.md`
+step 1 now opens DevTools first and names the exact error, the console check, and the four
+things to look at in the right pane.
+
+**Closed, in the way only a browser can close it.** The owner reloaded after the merge and
+reported **no CSP errors and the layout working**. That is the first direct observation of
+this interface, and it retires the paragraph above: the flex reasoning did not have to be
+trusted, and the CSP violation is gone rather than merely absent from a grep. What it does
+*not* retire is the two untested cases named below the floor and below 900px, and it says
+nothing about the network round-trip.
+
+**What the next task now depends on.** `data-on` and `multiagent-dot` are gone; anything
+that reaches for them will find nothing. The right pane's scroll behaviour below the
+140px floor is untested, and so is the layout below 900px, where the responsive rules
+restack the grid and give `.pane` a `min-height: 260px` — a composer asking for 140px of a
+260px pane is the tightest case in the stylesheet and the first thing to look at if the
+narrow layout misbehaves.

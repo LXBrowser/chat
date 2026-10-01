@@ -152,6 +152,34 @@ are stored. The main agent can search the web, read what it finds, and rename th
 * `.agents/memory/tasks/extension-foundation.md` — record of the design-system scatter, the
   extension shell, and the core UI logic.
 
+## Fixed
+
+**Two defects the first browser run found.** Neither had been visible before, because the
+extension had never been loaded.
+
+* **The Content Security Policy was being violated.** `manifest.json` declares
+  `"style-src 'self'"`, which is correct and stays. `src/ui/index.html` carried ten
+  `style="…"` attributes, which that directive forbids outright, so Chrome refused to apply
+  them. Every one is now a class in the stylesheets — `.eyebrow--flush`, `.hint`,
+  `.push-top`, and `.pane__body--stack` — rather than ten one-off attributes.
+* **The right pane overlapped its Send/Clear footer.** `.composer` carried `height: 100%`.
+  Inside the flex column the pane body became, a percentage height resolves against the
+  *container* and knows nothing about its siblings, so the composer claimed the body's
+  entire height on top of the controls stacked above it and overflowed by their combined
+  height. `.composer__input`'s `min-height: 120px` meant it could not give the space back.
+  The composer now takes `flex: 1 1 200px` with a floor on the container rather than on the
+  input: it absorbs the pane's slack, it stops short of the footer, and below the floor the
+  pane body scrolls instead of the composer collapsing.
+* **The composer textarea fills its container and scrolls internally** (`overflow-y: auto`,
+  `resize: none`), and its label sits flush against its border.
+* **The multi-agent toggle's colour moved out of JavaScript.** `renderMultiAgent` assigned
+  `btn.style.color` and `dot.style.background` rather than toggling a class. That was never
+  a violation — a CSSOM property assignment is not the `style` attribute, and the policy
+  forbids only the attribute — but the button already carries `aria-pressed`, the colour
+  only *represents* that state, and a tint living in JavaScript can drift from the state it
+  mirrors. It is now a stylesheet rule keyed off `aria-pressed`, and the redundant `data-on`
+  mirror was dropped with it.
+
 ## Not in this release
 
 * **No synthesis.** Sub-agents each make a real OpenRouter call and log their answer in the
@@ -181,23 +209,31 @@ per round.
 
 ## Unverified
 
-**This extension has never been loaded in a browser.** It was authored in an environment
-with no Chrome.
+**The extension has now been loaded in Chrome twice.** The first run failed — it reported
+the CSP violation and the right-pane overlap this release fixes. After the fix, the owner
+reloaded and **the console is clean and the layout is correct**: the right pane's controls
+divide the tab properly, the composer takes the remaining height, its label sits flush on
+the textarea, and the Send / Clear footer is no longer overlapped. That is the first
+direct observation of this interface, and it covers the layout only.
 
 Verified: every module passes `node --check`; every import and every DOM id target
-resolves. 102 checks run under Node against stubbed `chrome` and `fetch` — 26 on the
-service worker (SSE handling, the tool loop, and assertions that the key never appears in
-anything the worker posts), 11 on the model settings, 11 on the port client, 46 on the
-tools (search parsing, HTML-to-text, entity decoding, the SSRF guard including rebinding
-across a redirect, and both network tools against a stubbed fetch), 8 on the page side of
-a tool round-trip, and 21 on the agent registry against the auto-remove contract.
+resolves; no `style` attribute or style assignment anywhere in `src/`; all 47 classes used
+in `index.html` are defined in the stylesheets; and the three panes render as intended
+under the extension's own CSP. 102 checks run under Node against stubbed `chrome` and
+`fetch` — 26 on the service worker (SSE handling, the tool loop, and assertions that the key
+never appears in anything the worker posts), 11 on the model settings, 11 on the port
+client, 46 on the tools (search parsing, HTML-to-text, entity decoding, the SSRF guard
+including rebinding across a redirect, and both network tools against a stubbed fetch), 8
+on the page side of a tool round-trip, and 21 on the agent registry against the auto-remove
+contract.
 
-Not verified: the DOM path and the real network round-trip — `app.js` boot order, the
-modal, the panes rendering, the streaming caret, whether OpenRouter accepts these requests
-or the tool schemas at all, whether the DuckDuckGo endpoint still serves markup this
-parser recognises, and whether Chrome returns a readable `Location` for a
-`redirect: 'manual'` response as the redirect guard assumes. The tool loop has been driven
-only by scripted SSE bodies.
+Not verified: the **real network round-trip** — whether OpenRouter accepts these requests
+or these tool schemas at all, whether the streaming caret behaves over a live stream,
+whether DuckDuckGo still serves markup this parser recognises, and whether Chrome returns a
+readable `Location` for a `redirect: 'manual'` response as the redirect guard assumes. The
+tool loop has been driven only by scripted SSE bodies. Two layout cases are also still
+unobserved: the right pane below its 140px composer floor, and the layout under 900px where
+the responsive rules give `.pane` a `min-height: 260px`.
 
 The procedure is in [Setup](../../../../environments/setup.md).
 

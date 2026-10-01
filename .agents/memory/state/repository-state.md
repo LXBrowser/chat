@@ -59,8 +59,10 @@ models.
 
 ## What works today
 
-**Intended, and not yet confirmed in a browser** — see *What has not been verified* below.
-These were verified under Node against stubs, which is not the same claim.
+**The layout is confirmed in Chrome; the behaviour is not.** The panes render as intended
+with a clean console — see *What has not been verified* below. Everything else on this list
+was verified under Node against stubs, which is not the same claim, and no live
+OpenRouter round-trip has been made.
 
 * Load unpacked; the API-key modal blocks until a key is stored.
 * New chat, open chat, delete chat, rename chat — all against IndexedDB.
@@ -95,38 +97,39 @@ These were verified under Node against stubs, which is not the same claim.
 
 ## What has not been verified
 
-**The extension has been loaded in Chrome once — and that run failed immediately.** The
-owner loaded it unpacked and the new tab reported a Content Security Policy violation:
-`manifest.json`'s `style-src 'self'` forbids the ten `style="…"` attributes in
-`src/ui/index.html`, so the page's own styles were never applied. The same run showed the
-right pane overlapping its footer, for the reason recorded in task 7. **Both were open at
-the time this was written** and are the whole of task 7.
+**The extension has been loaded in Chrome twice.** The first run failed — the new tab
+reported a Content Security Policy violation, because `manifest.json`'s `style-src 'self'`
+forbids the `style="…"` attributes in `src/ui/index.html`, and the right pane overlapped
+its footer. Task 7 fixed both. **The owner reloaded afterwards and confirmed the console
+is clean and the layout is correct** — this is the first direct observation of the
+interface, and it covers the layout only.
 
-Every module passes `node --check`, every import and DOM id resolves, and 102 checks run
-under Node against stubbed `chrome` and `fetch` cover the service worker's SSE handling and
-tool loop, the model settings, the port client, the search parser and HTML extraction, the
-`read_page` guard, the page half of a tool round-trip, and the agent registry.
+Every module passes `node --check`, every import and DOM id resolves, no `style` attribute
+or style assignment remains anywhere in `src/`, all 47 classes in `index.html` are defined
+in the stylesheets, and 102 checks run under Node against stubbed `chrome` and `fetch`
+cover the service worker's SSE handling and tool loop, the model settings, the port client,
+the search parser and HTML extraction, the `read_page` guard, the page half of a tool
+round-trip, and the agent registry.
 
-Because the CSP error stopped the styles applying, **no one has yet seen the interface
-render as intended**, and the real network round-trip is still untested: `app.js` boot
-order, the modal, the panes rendering, the streaming caret, whether OpenRouter accepts these
-requests or these tool schemas at all, whether DuckDuckGo still serves markup the parser
-recognises, and whether Chrome returns a readable `Location` for a `redirect: 'manual'`
-response — which the redirect guard depends on. The tool loop has only been driven by
-scripted SSE bodies.
+The **real network round-trip is still unobserved**: whether OpenRouter accepts these
+requests or these tool schemas at all, whether the streaming caret behaves over a live
+stream, whether DuckDuckGo still serves markup the parser recognises, and whether Chrome
+returns a readable `Location` for a `redirect: 'manual'` response — which the redirect
+guard depends on. The tool loop has only been driven by scripted SSE bodies.
 
-The procedure is in `wiki/environments/setup.md`: load unpacked, walk the working list
-above, then run the `db.js` round-trip and its two negative paths from the console.
+Two layout cases are also still unobserved: the right pane below its 140px composer floor,
+and the layout under 900px, where the responsive rules give `.pane` a `min-height: 260px`
+and the composer asks for more than half of it.
+
+The procedure is in `wiki/environments/setup.md`: load unpacked, open DevTools **first** and
+confirm the console is clean, walk the working list above, then run the `db.js` round-trip
+and its two negative paths from the console.
 
 The test scripts live in `/tmp` and are **not committed** — the repository states it has no
 test runner, and adding one was out of scope. They are the obvious first candidate if that
 changes.
 
 ## Known open items
-
-**Two presentation defects from the first browser run, both in task 7:** the CSP violation
-above, and the right pane overlapping its Send/Clear footer. Nothing outside `src/ui/` is
-involved.
 
 **Nothing stops a `style="…"` from coming back.** `manifest.json`'s `style-src 'self'` will
 refuse it in the browser, which is the guard, but there is no lint step and no test runner

@@ -48,6 +48,16 @@ them. Point the model at something cheap before you start.
 
 1. **Load unpacked.** Open a new tab. A modal blocks the app asking for an OpenRouter
    key — nothing else is usable until you provide one.
+   **Open DevTools first and watch the console.** An
+   `Applying inline style violates the following Content Security Policy directive`
+   error means a `style="…"` attribute has crept back into the markup — `manifest.json`
+   sets `"style-src 'self'"`, which forbids them, and the styles it should have applied
+   will be missing. Search the tree for `style="`; a class belongs in a stylesheet.
+   With the console clean, the three panes should fill the tab, each with its glass
+   surface and its own scrollbar. In the right pane, **Your prompt** should sit flush on
+   the textarea, the textarea should take the height left over by the controls above it,
+   and the **Send / Clear** footer should never be overlapped — resize the window to
+   check it, including narrower than the design width.
 2. **Send something.** Type a short prompt, press **Send**. The chat is titled from the
    first line, the prompt appears in the left pane, and then **the answer should start
    arriving word by word** with a blinking caret. The button says *Waiting…* and is
