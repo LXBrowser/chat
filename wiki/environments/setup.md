@@ -15,10 +15,17 @@ There is nothing to install and nothing to build. The repository is loaded unpac
 4. Select the **repository root** — the directory containing `manifest.json`, not `src/`.
 5. Confirm the extension appears in the list as `@lxbrowser/chat` with no errors.
 
-The manifest now declares `host_permissions` for OpenRouter, DuckDuckGo, a DNS resolver,
-and `https://*/*`. Chrome shows a permission warning on the card for the last one — that
-is expected. It is granted so the built-in `read_page` tool can fetch the URLs search
-returns, and [Environment](env.md) explains what that grant does and does not allow.
+The manifest declares two kinds of permission. `host_permissions` cover OpenRouter, DuckDuckGo, a
+DNS resolver, and `https://*/*`; the `storage` permission is what makes `chrome.storage` exist
+at all. Chrome shows a permission warning on the card for `https://*/*` — that is expected.
+It is granted so the built-in `read_page` tool can fetch the URLs search returns, and
+[Environment](env.md) explains what that grant does and does not allow.
+
+**`storage` is not optional.** In Manifest V3 Chrome only injects `chrome.storage` when it
+is declared in `permissions`. Without it the namespace is `undefined`, every read of the API
+key and every setting throws, and the page shows an error under the Send button. The
+service worker reads the key through the same namespace, so nothing reaches OpenRouter
+either.
 
 ## Open it
 
@@ -37,7 +44,32 @@ through **Load unpacked** and the new-tab override.
 ## After changing files
 
 Chrome does not reload unpacked extensions automatically. Press the reload icon on the
-extension card at `chrome://extensions` after every change, then reopen the new tab.
+extension card at `chrome://extensions` after every change, then **open a new tab** — an
+already-open new-tab page keeps the old HTML, CSS and JavaScript, so reloading the card
+alone looks like nothing happened. A hard reload (`Ctrl`+`Shift`+`R`) forces the
+stylesheet too.
+
+If something you changed does not appear, check that you are seeing current CSS before
+concluding the change did not work:
+
+```js
+getComputedStyle(document.querySelector('.composer')).gap   // '6px' — current
+```
+
+## Check the page has its permissions
+
+Run this in the DevTools console on a **new** tab, before anything else. It is the fastest
+way to tell a manifest fault from anything else, and it costs one line:
+
+```js
+typeof chrome?.storage?.local     // 'object' — good; 'undefined' means the manifest lost "storage"
+chrome.runtime.id                 // a non-empty string on an extension page; undefined means you are not on one
+```
+
+**`chrome.runtime` present while `chrome.storage` is absent means a missing permission, not
+a missing extension context.** That distinction cost a round here: `chrome_url_overrides`
+always serves the new tab from the extension origin, so the page cannot silently load as a
+web page. The page now also checks both before it does any work and says which one is wrong.
 
 ## Checking the interface
 
@@ -52,29 +84,28 @@ find things that are not in here.
 
 1. **Load unpacked.** Open a new tab. A modal blocks the app asking for an OpenRouter
    key — nothing else is usable until you provide one.
+   **If that modal does not appear, stop here.** The page reports the reason under the
+   Send button, and it names which fault it is: a missing `storage` permission, or a page
+   that is not running as an extension. *Check the page has its permissions* above settles
+   it in one line. Both faults were real here, and each cost a round to find.
    **Open DevTools first and watch the console.** An
    `Applying inline style violates the following Content Security Policy directive`
-   error means a `style="…"` attribute has crept back into the markup — `manifest.json`
+   error means a `style="…" attribute has crept back into the markup — `manifest.json`
    sets `"style-src 'self'"`, which forbids them, and the styles it should have applied
    will be missing. Search the tree for `style="`; a class belongs in a stylesheet.
    With the console clean, the three panes should fill the tab, each with its glass
    surface and its own scrollbar. In the right pane, **Your prompt** should sit just
-   above the textarea — close, but not touching it — the textarea should take the height
-   left over by the controls above it, and the **Send / Clear** footer should never be
-   overlapped. Resize the window to check it, including narrower than the design width.
+   above the textarea — close, but not touching it, and spaced like the **Model** label
+   above its own control — the textarea should take the height left over by the controls
+   above it, and the **Send / Clear** footer should never be overlapped. Resize the
+   window to check it, including narrower than the design width.
 
    > **A pane that looks right is not proof that anything works.** This interface is
    > static HTML and CSS, so it renders identically whether or not any JavaScript runs.
    > It once sat exactly like this with `boot()` defined and never called — no gate, no
-   > database, no listener on any control. The checks that prove the app is alive are
-   > the ones after this: a chat in the history list, and a **Send** button that
-   > disables itself.
-
-   > **A pane that looks right is not proof that anything works.** This interface is
-   > static HTML and CSS, so it renders identically whether or not any JavaScript runs.
-   > It once sat exactly like this with `boot()` defined and never called — no gate, no
-   > database, no listener on any control. The checks that prove the app is alive are
-   > the ones after this: a chat in the history list, and a **Send** button that
+   > database, no listener on any control — and then again with a manifest that declared no
+   > `permissions` at all, where every storage call threw. The checks that prove the app is
+   > alive are the ones after this: a chat in the history list, and a **Send** button that
    > disables itself.
 2. **Send something.** Type a short prompt, press **Send**. The chat is titled from the
    first line, the prompt appears in the left pane, and then **the answer should start

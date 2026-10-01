@@ -77,6 +77,10 @@ and they need different hosts granted:
 | Reading a page | `https://*/*` | The URL comes from search results, so it cannot be enumerated in advance. |
 
 ```json
+"permissions": [
+  "storage"
+],
+
 "host_permissions": [
   "https://openrouter.ai/*",
   "https://html.duckduckgo.com/*",
@@ -85,7 +89,23 @@ and they need different hosts granted:
 ]
 ```
 
-No API permissions — no `activeTab`, no `tabs`, no `scripting`.
+No browsing permissions — no `activeTab`, no `tabs`, no `scripting`.
+
+### `storage` is required, not optional
+
+The two arrays do different jobs and `storage` is the one that breaks the loudest when it
+goes missing. `host_permissions` decide which hosts the worker may fetch; `storage` decides
+whether `chrome.storage` exists **at all**.
+
+In Manifest V3 Chrome injects the `chrome.storage` namespace only when it is declared in
+`permissions`. Undeclared it is `undefined` rather than degraded, so
+`chrome.storage.local.get()` throws `TypeError: Cannot read properties of undefined
+(reading 'local')` on the first call, with no warning at load time and no partial
+behaviour. It affects the page and the service worker equally, since both read through it.
+
+The key lives in `chrome.storage.local` and **not** `sync`, which uploads its contents to
+Google's servers — wrong for a credential. `storage` does not grant that: `local` is local
+unless `sync` is asked for by name.
 
 ### `https://*/*` is a broad grant
 
