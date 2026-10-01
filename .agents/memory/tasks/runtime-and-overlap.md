@@ -154,3 +154,40 @@ application will run for the first time. The modal, the model dropdown, Settings
 service worker, the port, the tool loop and `read_page` have all been unreachable behind
 this one line and none of them has executed in a browser. **The owner's next reload is the
 first live run of almost everything in this repository**, and further defects are expected.
+
+### Task 3 — `fix/composer-label-spacing`
+
+**Landed.** Two values in `src/ui/css/layout.css`, and one deleted rule.
+
+**`.composer`'s gap `4px` → `6px`, matching `.model`.** `.model` is the only other
+vertically-stacked flush eyebrow in the right pane and already uses 6px. At 4px the composer
+was the tightest flush label in the design — inconsistent with its two siblings for no
+stated reason, and it is the one sitting against a control large enough that a small gap
+reads as collision. Matching an existing value rather than choosing one is what keeps a
+second number out of a system that has no spacing scale.
+
+**`.composer__hint`'s rule is deleted rather than retuned.** It carried 8px once, then 4px,
+purely to defend a gap the flex column already provides — it existed only because the gap had
+been 0. Left in place at 6px it would have needed `margin-top: 2px`, which is a shim that
+breaks the next time anyone edits the gap, and it is what made the space *below* the textarea
+a different number from the space *above* it. The class stays on the element in `index.html`
+and is still styled by `.lead` and `.hint`; only its one-off rule is gone. The reason is
+recorded on `.composer` itself, so the next session that finds the missing rule finds the
+explanation next to the value that replaced it.
+
+**`.eyebrow--flush` is deliberately not touched**, for the third time and for the same
+reason: it is correct in the three contexts where the label is not adjacent to the textarea,
+and a margin there would double the spacing those containers already provide.
+
+**Verified.** The column computes label → textarea at 6px and textarea → hint at 6px; `.model`
+computes 6px; `layout.css` brace-balances; all 105 checks still pass.
+
+**Not verified — the rendering, again, and it is the third round on this one label.** The CSS
+committed before this task computed roughly 17px of clearance between the glyphs and the
+border, which cannot produce the reported picture, so the likeliest explanation is a stale
+stylesheet: "text sitting exactly *on* the border line" is precisely what `gap: 0` renders,
+and that is what PR #9 shipped. This task corrects the value on consistency grounds either
+way. **The owner can settle it in one line** at the console —
+`getComputedStyle(document.querySelector('.composer')).gap` returns `6px` on current CSS and
+`0px` on a stale sheet, and only the second of those is a hard-reload problem rather than a
+code one.

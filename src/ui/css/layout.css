@@ -266,12 +266,20 @@ h1, h2, h3, h4 {
 .composer {
   display: flex;
   flex-direction: column;
-  /* Was 0, to sit the label flush on the textarea's border. Zero is the wrong
-     value here: the label's line box then ends exactly on the border, and at
-     11px uppercase with letter-spacing it reads as touching rather than as
-     flush. 4px is `.eyebrow`'s own bottom margin, so it introduces no new
-     spacing value to the design system. */
-  gap: 4px;
+  /* Spacing between the label and the textarea, and between the textarea and the
+     hint. Was 0, to seat the label flush on the textarea's border; then 4px, taken
+     from `.eyebrow`'s own bottom margin. 6px matches `.model`, which is the only
+     other vertically-stacked flush eyebrow in this pane — at 4px the composer was
+     the tightest flush label in the design, and read as touching rather than as
+     seated. Matching an existing value rather than picking one is what keeps a
+     second number out of the system.
+
+     `.composer__hint` therefore has no margin of its own and its rule is gone. It
+     carried 8px once, then 4px, purely to defend a gap this column already
+     provides — a compensating value that goes wrong the next time anyone edits
+     `gap`, and that left the space below the textarea a different number from the
+     space above it. Do not restore it. */
+  gap: 6px;
   /* Absorbs whatever the controls above it do not need. This was `height: 100%`,
      which resolved against the whole body and pushed the column past the footer.
      A percentage cannot do this job: it knows the container's height and nothing
@@ -295,12 +303,6 @@ h1, h2, h3, h4 {
   background: var(--surface-solid);
   color: var(--ink-900);
   font: inherit;
-}
-
-.composer__hint {
-  /* Halved from 8px when the column's gap went from 0 to 4px, so the space
-     between the textarea and the hint stays 8px in total. */
-  margin-top: 4px;
 }
 
 .composer__input:focus-visible {
