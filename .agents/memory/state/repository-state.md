@@ -59,10 +59,10 @@ models.
 
 ## What works today
 
-**The layout is confirmed in Chrome; the behaviour is not.** The panes render as intended
-with a clean console — see *What has not been verified* below. Everything else on this list
-was verified under Node against stubs, which is not the same claim, and no live
-OpenRouter round-trip has been made.
+**Nothing on this list has ever run.** `boot()` was found defined and never called, so the
+entire application sat inert behind a correct-looking interface through two Chrome runs
+and every earlier verification pass. `boot()` is now invoked and the gate's rejection is
+handled — but the correct claim is that the code path exists, not that it works.
 
 * Load unpacked; the API-key modal blocks until a key is stored.
 * New chat, open chat, delete chat, rename chat — all against IndexedDB.
@@ -76,6 +76,10 @@ OpenRouter round-trip has been made.
 * **Ask something the Main Agent cannot answer from memory.** It calls `search_web`,
   follows a result with `read_page`, cites where the facts came from, and renames the chat
   once it knows the subject. Tool calls log in the centre pane as they run.
+
+What *is* confirmed in Chrome is presentation only: the panes render under the extension's
+own CSP, the composer takes the remaining height, the footer is not overlapped, and the
+label is clear of the textarea.
 
 ## Limits worth knowing
 
@@ -97,33 +101,42 @@ OpenRouter round-trip has been made.
 
 ## What has not been verified
 
-**The extension has been loaded in Chrome twice.** The first run failed — the new tab
-reported a Content Security Policy violation, because `manifest.json`'s `style-src 'self'`
-forbids the `style="…"` attributes in `src/ui/index.html`, and the right pane overlapped
-its footer. Task 7 fixed both. **The owner reloaded afterwards and confirmed the console
-is clean and the layout is correct** — this is the first direct observation of the
-interface, and it covers the layout only.
+**The extension has been loaded in Chrome twice, and neither run exercised a line of
+application behaviour.** The first reported the CSP violation and the right-pane overlap.
+The second reported the composer label sitting on the textarea, and the API-key modal
+never appearing — because `boot()` was defined and never called. Nothing in `app.js` has
+ever executed in a browser. It is now invoked, and that has not been observed either.
 
 Every module passes `node --check`, every import and DOM id resolves, no `style` attribute
 or style assignment remains anywhere in `src/`, all 47 classes in `index.html` are defined
-in the stylesheets, and 102 checks run under Node against stubbed `chrome` and `fetch`
+in the stylesheets, `boot()` resolves to an invocation, and no top-level function in
+`app.js` is left uncalled. 102 checks run under Node against stubbed `chrome` and `fetch`
 cover the service worker's SSE handling and tool loop, the model settings, the port client,
 the search parser and HTML extraction, the `read_page` guard, the page half of a tool
 round-trip, and the agent registry.
 
-The **real network round-trip is still unobserved**: whether OpenRouter accepts these
-requests or these tool schemas at all, whether the streaming caret behaves over a live
-stream, whether DuckDuckGo still serves markup the parser recognises, and whether Chrome
-returns a readable `Location` for a `redirect: 'manual'` response — which the redirect
-guard depends on. The tool loop has only been driven by scripted SSE bodies.
+**None of those checks executes `app.js`, and there is no DOM harness that could.** That
+is how a fully written, correct, entirely unreachable `boot()` passed every check in two
+consecutive rounds. The new uncalled-function assertion closes that one hole and nothing
+else.
+
+Confirmed in Chrome is presentation only: the panes render under the extension's own CSP,
+the composer takes the remaining height, the footer is not overlapped, and the label is
+clear of the textarea.
+
+Unverified is everything else — whether it boots past the gate at all, whether OpenRouter
+accepts these requests or these tool schemas, whether the streaming caret behaves over a
+live stream, whether DuckDuckGo still serves markup the parser recognises, and whether
+Chrome returns a readable `Location` for a `redirect: 'manual'` response, which the
+redirect guard depends on. The tool loop has only been driven by scripted SSE bodies.
 
 Two layout cases are also still unobserved: the right pane below its 140px composer floor,
 and the layout under 900px, where the responsive rules give `.pane` a `min-height: 260px`
 and the composer asks for more than half of it.
 
-The procedure is in `wiki/environments/setup.md`: load unpacked, open DevTools **first** and
-confirm the console is clean, walk the working list above, then run the `db.js` round-trip
-and its two negative paths from the console.
+The procedure is in `wiki/environments/setup.md`. That checklist has never been run to the
+end — it was written before the first Chrome run, against an application that turned out
+never to have booted — so expect to find things that are not in it.
 
 The test scripts live in `/tmp` and are **not committed** — the repository states it has no
 test runner, and adding one was out of scope. They are the obvious first candidate if that
@@ -147,7 +160,9 @@ since there is one such folder. That file **is** committed.
 
 ## Next obvious step
 
-Synthesis. Sub-agents answer independently and are logged; nothing merges them into one
-response, which is the largest thing the product description promises that the extension
-does not yet do. It is also the most expensive thing to build and to run, so it is an owner
-decision rather than an obvious one.
+**Run it.** Not synthesis — synthesis is still the largest thing the product description
+promises that the extension does not do, and it is still an owner decision. But it is not
+the next step, because nothing has been *observed working*. Reload the extension and walk
+the checklist in `wiki/environments/setup.md`; the first live run is where the next defects
+will be, and they will be in code that has never executed: the service worker, the tool
+loop, the port client, and the `read_page` guard.

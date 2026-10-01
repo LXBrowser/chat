@@ -16,10 +16,23 @@ No version change, no new permission, nothing in the service worker or the tools
 
 | # | Title | Scope (one line) | Repository | Branch | Files / areas | PR |
 |---|---|---|---|---|---|---|
-| 1 | Task record | This file, written before the work | LXBrowser/chat | `chore/ui-overlap-and-modal-plan` | `.agents/memory/tasks/` | — |
-| 2 | Call `boot()` | The application has never run | LXBrowser/chat | `fix/boot-never-ran` | `src/ui/app.js` | — |
-| 3 | Composer label spacing | 0px to 4px above the textarea | LXBrowser/chat | `fix/composer-label-spacing` | `src/ui/css/layout.css` | — |
-| 4 | Release | Changelog, the setup checklist, closing entries | LXBrowser/chat | `docs/ui-overlap-and-modal-release` | `wiki/`, `.agents/memory/` | — |
+| 1 | Task record | This file, written before the work | LXBrowser/chat | `chore/ui-overlap-and-modal-plan` | `.agents/memory/tasks/` | #9 |
+| 2 | Call `boot()` | The application has never run | LXBrowser/chat | `fix/boot-never-ran` | `src/ui/app.js` | #13 (was #10) |
+| 3 | Composer label spacing | 0px to 4px above the textarea | LXBrowser/chat | `fix/composer-label-spacing` | `src/ui/css/layout.css` | #11 |
+| 4 | Release | Changelog, the setup checklist, closing entries | LXBrowser/chat | `docs/ui-overlap-and-modal-release` | `wiki/`, `.agents/memory/` | #12 |
+
+**The stack did not merge the way the plan assumed, and the reason is worth keeping.**
+`plan_creator` §F says deleting a branch as it merges is the signal that re-targets the
+next pull request. For task 2 it was not: deleting `chore/ui-overlap-and-modal-plan` on
+merge **auto-closed #10** rather than re-targeting it to `master`. A closed request cannot
+have its base changed and cannot be reopened, so #10 was replaced by #13 — same branch,
+same commit, same diff, retargeted to `master`. Tasks 3 and 4 were then retargeted to
+`master` *before* anything merged, which is the procedure §F gives for a branch that has
+to be kept, and which is what stopped the same thing happening twice.
+
+So on this forge "delete on merge" is not a safe re-target signal; "re-target by hand
+before merging" is. Every merge below was verified by reading `master` afterwards rather
+than by trusting the request's state.
 
 Tasks 2 and 3 touch different files, are independently reviewable, and have no
 dependency on each other, so they are separate branches rather than one. Task
@@ -165,3 +178,46 @@ pass.
 **Not verified — the rendering, again.** Nothing in this repository can observe
 whether 4px reads as separated at the real font size. That is the owner's eye, and it
 is a one-glance check.
+### Task 4 — `docs/ui-overlap-and-modal-release`
+
+**Landed.** Four documentation corrections, and they are the substance of this task
+rather than an appendix to it.
+
+**"What works today" was the worst of them.** It listed seven capabilities in the
+present tense — send a prompt, stream an answer, fan out to sub-agents, search and
+cite. Not one had ever executed. It now says so at the top of the list rather than in a
+footnote, because a reader who skims gets the correct answer either way and a reader who
+reads to the end should not have been told something false in the meantime.
+
+**The checklist in `setup.md` gets a warning it badly needed.** It was written before
+the first Chrome run, against an application that turned out never to have booted, and
+it reads as though every step had been performed at least once. It now says it has never
+been run to the end, and step 1 carries a blockquote: **a pane that looks right is not
+proof that anything works.** That is the lesson of this whole task in one sentence — the
+interface is static HTML and CSS, so it renders identically whether or not JavaScript
+runs, and it did.
+
+**The changelog's `Unverified` section now leads with the structural reason** rather than
+listing what is untested. "None of those checks executes `app.js`, and the repository has
+no DOM harness that could" is the fact a future maintainer needs; the list of untested
+items is downstream of it.
+
+**`overview.md`'s "Current state"** now distinguishes implemented from observed, and
+points at the checklist rather than inviting reliance.
+
+**Verified.** The 102 checks still pass; `boot()` resolves to an invocation; no top-level
+function in `app.js` is uncalled; no inline style reintroduced; both stylesheets
+brace-balance; version still `0.1.0`; `manifest.json` untouched; no session link in any
+commit in this stack.
+
+**What the owner still has to do, and it is a bigger job than it looks.** Reload the
+extension. This is the first run in which the application executes at all, so it will
+exercise code that has never been live: the service worker, the port, the tool loop, the
+streaming path, and the `read_page` guard. **Expect further defects.** This record claims
+only that the code path now exists, and the owner's runtime test is the only thing that
+closes it.
+
+## Done
+
+All four tasks merged. Nothing in this stack has been observed running; that is the
+next session's work, not this one's.
