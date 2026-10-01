@@ -17,12 +17,17 @@ stays `0.1.0` — and no change to how the API key is stored, read, or passed.
 
 | # | Title | Scope (one line) | Repository | Branch | Files / areas | PR |
 |---|---|---|---|---|---|---|
-| 1 | Task record | This file, written before the work | LXBrowser/chat | `chore/storage-context-fallback-plan` | `.agents/memory/tasks/`, `memory-index.md` | |
-| 2 | Storage permission and an honest failure message | The manifest declares no `permissions` at all | LXBrowser/chat | `fix/storage-context-fallback` | `manifest.json`, `src/ui/app.js` | |
-| 3 | Composer label spacing | `gap: 4px` → `6px`, matching `.model` | LXBrowser/chat | `fix/composer-label-spacing` | `src/ui/css/layout.css` | |
-| 4 | Release | Changelog, checklist, state, closing entries | LXBrowser/chat | `docs/runtime-and-overlap-release` | `wiki/`, `.agents/memory/` | |
+| 1 | Task record | This file, written before the work | LXBrowser/chat | `chore/storage-context-fallback-plan` | `.agents/memory/tasks/`, `memory-index.md` | [#14](https://github.com/LXBrowser/chat/pull/14) |
+| 2 | Storage permission and an honest failure message | The manifest declares no `permissions` at all | LXBrowser/chat | `fix/storage-context-fallback` | `manifest.json`, `src/ui/app.js` | [#15](https://github.com/LXBrowser/chat/pull/15) |
+| 3 | Composer label spacing | `gap: 4px` → `6px`, matching `.model` | LXBrowser/chat | `fix/composer-label-spacing` | `src/ui/css/layout.css` | [#16](https://github.com/LXBrowser/chat/pull/16) |
+| 4 | Release | Changelog, checklist, state, closing entries | LXBrowser/chat | `docs/runtime-and-overlap-release` | `wiki/`, `.agents/memory/` | [#17](https://github.com/LXBrowser/chat/pull/17) |
 
 Task *k* branches from task *k-1*'s branch and targets it. **No task merges on its own.**
+
+**This forge does not re-target a stacked pull request when its base is deleted.** The
+previous task record says so, and it was not re-tested: as last time, each request is
+re-targeted by hand *before* the merge above it, and every merge is verified by reading
+`master` afterwards rather than by trusting a request's state.
 
 ## The finding, recorded before any of the work
 
