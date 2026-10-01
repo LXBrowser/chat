@@ -546,3 +546,27 @@ function summariseAnswer(answer) {
   if (!clean) return 'no answer';
   return clean.length > 120 ? `${clean.slice(0, 117)}…` : clean;
 }
+
+// ---------------------------------------------------------------------------
+// Start
+// ---------------------------------------------------------------------------
+
+// Called last, so every declaration above is defined before boot runs — a module
+// that started itself mid-file would be relying on hoisting it does not get for
+// `const` bindings.
+//
+// The only rejection boot() can produce is the API-key gate, and only when the
+// user cancels it. Steps 2–5 never run in that case, which means the Settings
+// button has no listener: without the catch below, cancelling would leave a page
+// that looks alive and does nothing, with no way to add a key and start over.
+boot().catch((err) => {
+  const status = $('send-status');
+  status.hidden = false;
+  status.textContent = err.message;
+
+  document.querySelector('[data-action="open-settings"]').addEventListener(
+    'click',
+    () => window.location.reload(),
+    { once: true },
+  );
+});
