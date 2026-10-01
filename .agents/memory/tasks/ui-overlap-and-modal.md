@@ -128,3 +128,40 @@ affect this. What task 4 does depend on is the honesty of the documentation:
 `setup.md`'s checklist, `overview.md`'s "Current state", and `repository-state.md`'s
 "What works today" all describe behaviour that has now been shown never to have run,
 and none of them may be marked verified on the strength of this commit.
+
+### Task 3 — `fix/composer-label-spacing`
+
+**Landed.** Two values in `src/ui/css/layout.css`.
+
+**`gap: 0` → `4px`, and `.composer__hint`'s `margin-top: 8px` → `4px`.** The second
+change is the one that is easy to miss: the gap governs *every* pair of children in
+the column, so raising it would have pulled the hint up to 4px from the textarea and
+halved the space that was there deliberately. Halving the hint's own margin keeps
+label → textarea at 4px and textarea → hint at 8px, so only the reported collision
+changes and the rest of the composer is untouched.
+
+**4px is not a new value in this stylesheet.** It is already `.eyebrow`'s own bottom
+margin in `components.css`, which is what makes it the right number rather than an
+arbitrary one — the design system has no spacing scale, it uses raw pixels, and the
+value the label uses everywhere else is the value it now uses against the textarea.
+
+**"Flush" was the previous round's requirement, and it was wrong.** The last task set
+`gap: 0` to satisfy an explicit instruction to seat the label completely flush. It
+does seat it flush, which is exactly the problem: zero means the label's line box ends
+on the textarea's border edge, and at 11px uppercase with letter-spacing the result
+reads as collision rather than as alignment. Worth recording because a later session
+reading the previous commit would see a deliberate `gap: 0` with a comment explaining
+it, and could reasonably "restore" it.
+
+`.eyebrow--flush` is deliberately **not** touched. It is correct in the three places
+the label is not adjacent to a textarea — the title bar, the agent cap and the model
+picker — and adding margin there would double the spacing `.model`'s own `gap: 6px`
+already provides.
+
+**Verified.** The column computes label → textarea at 4px and textarea → hint at 8px.
+No inline style reintroduced; both stylesheets brace-balance; the 102 checks still
+pass.
+
+**Not verified — the rendering, again.** Nothing in this repository can observe
+whether 4px reads as separated at the real font size. That is the owner's eye, and it
+is a one-glance check.
