@@ -110,3 +110,47 @@ recoverable. Task 3 touches `layout.css` only and must leave `.eyebrow--flush` a
 it is correct in the three contexts where the label is not adjacent to the textarea. Task 4
 depends on the honesty of the documentation: nothing may be marked verified on the strength
 of this stack, because the owner's runtime test is the only thing that closes it.
+
+### Task 2 — `fix/storage-context-fallback`
+
+**Landed.** One permission in `manifest.json`, and a precondition check in `src/ui/app.js`.
+
+**`"permissions": ["storage"]`, and nothing else.** Sweeping `src/` turns up exactly two
+Chrome namespaces: `chrome.storage`, which needs this, and `chrome.runtime`, which needs
+none. So the set is complete and carries no unused permission.
+
+**The check runs before `boot()`, not inside it.** `startupFault()` names the two faults
+separately — no extension context, and no `storage` permission — and the page reports which
+one it is instead of surfacing whatever the first storage call happened to throw. This is
+the fix for the diagnosis problem, which was the part of the owner's report that was right:
+a bare `TypeError` next to a Send button, with Settings silently reloading, gave no way to
+tell the two apart. **Naming them separately is what would have saved the round.**
+
+**The reload is now offered only where it can help.** The `startupFault()` branch disables
+Send and says why; it deliberately does *not* wire Settings to reload, because a reload on a
+manifest fault lands on the same page with the same problem. That is precisely the loop the
+owner saw — clicking Settings and getting a reload of an already-broken context — so the
+reload now lives only on the path where re-running `boot()` re-opens the gate, which is a
+cancelled one. Send is disabled on the fault path rather than left enabled and inert, which
+is what the previous run looked like.
+
+**A check that would have caught this when `storage.js` was written.** The fault class is
+"a manifest that nothing asserts against" — the same shape as the uncalled `boot()`, and it
+survived 102 green checks. So there is now a sweep: every `chrome.<api>` dereferenced in
+`src/` must be declared in `permissions` or be one of the namespaces that need none, and no
+permission may be declared that is unused. **It passes on the fixed manifest and fails on the
+pre-fix one**, naming `storage` and the three files that use it — that negative control is
+the only reason it is worth anything, since a check that cannot fail has not been run.
+It lives in `/tmp` and is not committed, matching the repository's position that it has no
+test runner.
+
+**Verified.** `permissions` is exactly `["storage"]`; version still `0.1.0`; the manifest
+parses; `node --check` passes on every module in `src/`; no top-level function in `app.js`
+is uncalled; every DOM id `app.js` reaches for exists in `index.html`; no inline style
+attribute anywhere in `src/`; the 102 existing checks still pass, plus 3 from the new one.
+
+**Not verified — and this is the whole point of the task.** Adding the permission means the
+application will run for the first time. The modal, the model dropdown, Settings, the
+service worker, the port, the tool loop and `read_page` have all been unreachable behind
+this one line and none of them has executed in a browser. **The owner's next reload is the
+first live run of almost everything in this repository**, and further defects are expected.
