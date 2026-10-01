@@ -25,3 +25,4 @@ Memory is written freely and automatically — it is the one tree with no approv
 |---|---|
 | [`../memory/tasks/agents-setup.md`](../memory/tasks/agents-setup.md) | Record of the agent-instruction scaffold: mode, branch, decisions, what was proposed but not selected. |
 | [`../memory/tasks/extension-foundation.md`](../memory/tasks/extension-foundation.md) | Record of the design-system scatter and the extension shell: the task table, filled per task as the work lands. |
+| [`../memory/tasks/ui-overlap-and-modal.md`](../memory/tasks/ui-overlap-and-modal.md) | Record of the second browser run: the composer label spacing, and the discovery that `boot()` was never called. |
