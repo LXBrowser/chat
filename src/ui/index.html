@@ -23,16 +23,32 @@
      aria-labelledby="api-key-title">
   <div class="modal__scrim"></div>
   <div class="modal__panel">
-    <p class="eyebrow">One-time setup</p>
+    <p class="eyebrow" id="api-key-eyebrow">One-time setup</p>
     <h1 class="modal__title" id="api-key-title">Connect OpenRouter</h1>
-    <p class="lead">
+    <!-- Two leads, one per state, toggled by setState(). Not one element with its text
+         rewritten: the first-run copy carries a <code> element, and assigning
+         textContent to the paragraph would delete it. -->
+    <p class="lead" id="api-key-lead-new">
       This extension talks to OpenRouter. Paste a key to continue — it is stored in
       <code>chrome.storage.local</code> in this browser and is never sent anywhere else.
     </p>
+    <p class="lead" id="api-key-lead-saved" hidden>
+      A key is stored in <code>chrome.storage.local</code> in this browser. Choose
+      <strong>Edit</strong> to replace it — the stored key is never shown.
+    </p>
 
     <label class="eyebrow" for="api-key-input">API key</label>
-    <input class="modal__input" id="api-key-input" type="password"
-           placeholder="sk-or-v1-…" autocomplete="off" spellcheck="false">
+    <div class="keyfield">
+      <input class="modal__input" id="api-key-input" type="password"
+             placeholder="sk-or-v1-…" autocomplete="off" spellcheck="false">
+      <!-- Shown only while a key is stored and the field is locked. Hidden state is
+           toggled by setState() in api-key.js, never by reading the stored value. -->
+      <button class="btn" type="button" data-action="edit-key" hidden>Edit</button>
+    </div>
+    <p class="modal__hint" id="api-key-hint" hidden>
+      A key is already stored. It is never shown here — choose <strong>Edit</strong> to
+      replace it.
+    </p>
 
     <p class="modal__error" id="api-key-error" role="alert"></p>
 

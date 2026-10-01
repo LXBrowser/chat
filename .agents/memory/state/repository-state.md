@@ -83,6 +83,13 @@ status row's text changes in place and is asserted to be the same DOM node befor
 a send, with the pane's element count unchanged. There is no longer an agent log, an agent
 dropdown, or a count badge anywhere in the interface.
 
+**The key modal has two states and writes on exactly one of them.** With no key stored the
+field is empty and editable and the button is **Save key**; with one stored the field is
+`readonly` behind an **Edit** button showing a constant mask, and **Update key** is disabled
+until Edit is pressed. Cancel writes nothing. And `storage.getApiKey()` is **deleted**, not
+merely unused — the only accessor left returns a boolean — so no code path in the page can
+pull the credential in even by accident.
+
 * Load unpacked; the API-key modal blocks until a key is stored. **Confirmed.**
 * New chat, open chat, delete chat, rename chat — all against IndexedDB. **Confirmed.**
 * **Send a prompt and get a streamed answer**, token by token, in the centre pane. The
@@ -138,12 +145,13 @@ Every module passes `node --check`, every import and DOM id resolves, no `style`
 or style assignment remains anywhere in `src/`, all 47 classes in `index.html` are defined
 in the stylesheets, `boot()` resolves to an invocation, no top-level function in `app.js`
 is left uncalled, and every `chrome.<api>` used in `src/` has its permission declared or
-needs none. **170 checks** run under Node against stubbed `chrome` and `fetch` cover the
+needs none. **185 checks** run under Node against stubbed `chrome` and `fetch` cover the
 service worker's SSE handling and tool loop, the model settings, the port client, the search
 parser and HTML extraction, the `read_page` guard, the page half of a tool round-trip, the
 agent registry, the manifest's permissions, the `data-*` names `views.js` writes against the
 selectors `app.js` uses, the centre pane's structure, the single status row, a failed send
-reaching the composer, and the boot step labels against the file's own load-order list.
+reaching the composer, the key modal's state machine, and the boot step labels against the
+file's own load-order list.
 
 **The static suite still cannot execute `app.js`, and that cost three rounds.** A fully
 written, correct, entirely unreachable `boot()` passed every check in two consecutive

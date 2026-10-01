@@ -47,11 +47,21 @@ export function effectiveModel({ model, customModel } = {}) {
 // API key
 // ---------------------------------------------------------------------------
 
-/** @returns {Promise<string|null>} the stored key, or null when none is set. */
-export async function getApiKey() {
+/**
+ * Whether a key is stored — **a boolean, deliberately, and never the key itself.**
+ *
+ * There is no way to read the credential out of this module any more. `getApiKey()` was
+ * deleted, so no code path in the page can pull the secret into page JavaScript even by
+ * accident; the modal's job is to ask *whether* one exists, and the only thing it ever
+ * puts in the input is a constant mask. The key itself is read exactly once, in
+ * `background.js`'s own context, and never crosses the port.
+ *
+ * @returns {Promise<boolean>}
+ */
+export async function hasApiKey() {
   const stored = await chrome.storage.local.get(API_KEY);
   const key = stored[API_KEY];
-  return typeof key === 'string' && key.trim() ? key.trim() : null;
+  return typeof key === 'string' && Boolean(key.trim());
 }
 
 /**

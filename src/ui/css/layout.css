@@ -9,6 +9,14 @@
   box-sizing: border-box;
 }
 
+/* The `hidden` attribute only works because the UA stylesheet sets `display: none` on
+   it, and any class that sets `display` beats that — `.btn` is `display: flex`, so a
+   hidden button stayed on screen while `element.hidden` read `true`. This makes the
+   attribute mean what it says, once, everywhere. */
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   height: 100%;
