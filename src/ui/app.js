@@ -17,9 +17,12 @@
  * conversation and receives text back; it never sees the API key.
  */
 
+import { TOOL_SCHEMAS } from '../tools.js';
 import * as apiKey from './lib/api-key.js';
 import * as agents from './lib/agents.js';
+import * as instructions from './lib/instructions.js';
 import * as openrouter from './lib/openrouter.js';
+import { pageToolNames, runPageTool } from './lib/page-tools.js';
 import * as sessions from './lib/sessions.js';
 import * as storage from './lib/storage.js';
 import * as views from './lib/views.js';
@@ -53,21 +56,27 @@ let sendNote = '';
 // ---------------------------------------------------------------------------
 
 /**
- * The Main Agent's standing instructions.
+ * The Main Agent's instructions.
  *
- * It is given the conversation so far as context and asked for a direct answer, because
- * there is no synthesis pass — whatever comes back is what the user reads.
+ * Loaded at boot from `agent_instructions`, seeded on first run from
+ * `src/prompts/system-instructions.md`. This constant is only the fallback for a load
+ * that fails outright — the seeded copy is what normally gets sent.
  */
-const MAIN_SYSTEM =
-  'You are the main agent in a chat workspace. Answer the user directly and completely. ' +
-  'You have no tools available. Prefer clear prose over bullet lists unless the user asks ' +
-  'for structure, and do not describe what you are about to do — just do it.';
+const MAIN_SYSTEM_FALLBACK =
+  'You are the main agent in a chat workspace. You have search_web, read_page and ' +
+  'update_chat_title available. Answer the user directly, and use the tools rather than ' +
+  'guessing at anything you were not told.';
+
+/** The Main Agent's system prompt, resolved once at boot. */
+let systemPrompt = MAIN_SYSTEM_FALLBACK;
 
 /**
  * A sub-agent's standing instructions.
  *
- * Each works the prompt independently and answers only that. There is no synthesis step,
- * so an answer is read in the agent log rather than merged into the transcript.
+ * Sub-agents get **no tools** — deliberately. Each answers one focused task and its output
+ * is read on its own in the log; a fan-out where every agent could search would multiply
+ * the cost of a single prompt for nothing, since there is no synthesis step to combine the
+ * results.
  */
 const SUBAGENT_SYSTEM =
   'You are a sub-agent in a chat workspace. You have been given one task. Answer it ' +
@@ -89,12 +98,17 @@ async function boot() {
   views.renderModel(settings);
   views.renderSendState({ busy });
 
-  // 3. Database. A first run has no sessions, so one is created rather than showing
+  // 3. Instructions. Seeded here rather than on the first send, so `agent_instructions`
+  //    is populated on first run and a seeding problem surfaces at boot where it can be
+  //    seen, instead of failing in the middle of a conversation.
+  systemPrompt = await instructions.get();
+
+  // 4. Database. A first run has no sessions, so one is created rather than showing
   //    an empty pane the user has no obvious way out of.
   await sessions.openMostRecentOrCreate();
   await refreshConversation();
 
-  // 4. Wiring.
+  // 5. Wiring.
   wireConversation();
   wireAgents();
   wireComposer();
@@ -398,6 +412,10 @@ async function conversationContext() {
  * It is a registry agent like any other, so it appears in the centre dropdown while it
  * works and leaves it when it finishes. That is the whole of the "active until complete"
  * behaviour — the registry already guarantees it.
+ *
+ * Only the Main Agent gets tools. The worker runs the network ones and forwards
+ * `update_chat_title` back here, because renaming touches the database and the title bar,
+ * and neither is reachable from the worker.
  */
 async function runMainAgent(history) {
   const model = storage.effectiveModel(settings);
@@ -409,9 +427,13 @@ async function runMainAgent(history) {
   try {
     const answer = await openrouter.chat({
       model,
-      system: MAIN_SYSTEM,
+      system: systemPrompt,
       messages: history,
+      tools: TOOL_SCHEMAS,
+      pageTools: pageToolNames(),
       onDelta: (delta) => views.pushDelta(handle, delta),
+      onToolCall: (call) => agents.log(agent.id, `· ${call.name}(${summariseArgs(call.arguments)})`),
+      onTool: (name, args) => runPageTool(name, parseArgs(args)),
     });
 
     // Checked before the agent finishes: an empty answer is a failure, and reporting it
@@ -492,6 +514,30 @@ async function runSubAgent({ name, prompt, messages, model }) {
 function summarise(history) {
   const last = history[history.length - 1];
   return last ? last.content.slice(0, 40) : '';
+}
+
+/**
+ * Parses a tool's arguments for the page-side runner.
+ *
+ * The worker hands over the raw argument string, because that is what the model produced
+ * and what it will be checked against. A parse failure becomes an empty object: the tool
+ * then reports the missing argument itself, which is a better error than a JSON error from
+ * a layer the model knows nothing about.
+ */
+function parseArgs(raw) {
+  try {
+    return JSON.parse(raw || '{}');
+  } catch {
+    return {};
+  }
+}
+
+/** A one-line rendering of tool arguments, for the agent log. */
+function summariseArgs(raw) {
+  const args = parseArgs(raw);
+  const first = Object.values(args)[0];
+  if (first === undefined) return '';
+  return String(first).replace(/\s+/g, ' ').slice(0, 40);
 }
 
 /** A one-line summary for the finish message, so the log ends with something readable. */

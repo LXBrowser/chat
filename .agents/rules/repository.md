@@ -65,6 +65,17 @@ empty, so the shared set is used unchanged.
 * An MV3 service worker is terminated when idle, and a single request is capped at roughly
   five minutes however active the port is. Anything long-running must assume it will be cut,
   and the page must treat a lost port as an expected event rather than a fault.
+* **A URL the model supplies is untrusted input.** The manifest grants `https://*/*` so
+  `read_page` can follow a search result to a host that cannot be known in advance, which
+  makes "fetch anything the agent asks for" genuinely reachable. Any tool that fetches a
+  model-supplied URL must, before the request: accept one scheme only and refuse the rest;
+  resolve the hostname and refuse loopback, link-local, `.local`, and every private range —
+  IPv4 and IPv6 alike; bound the download; and refuse a content type with no readable text.
+  The check is on the resolved address, not on the hostname's text: a public name can point
+  at `127.0.0.1`, and `localhost` alone is not the case worth defending.
+  This is a guard, not a sandbox. It does not replace treating fetched content as data in
+  the system prompt, and no guard here makes fetching model-supplied URLs safe — it makes
+  them bounded.
 
 ## Conventions the code follows
 

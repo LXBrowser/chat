@@ -15,8 +15,10 @@ There is nothing to install and nothing to build. The repository is loaded unpac
 4. Select the **repository root** — the directory containing `manifest.json`, not `src/`.
 5. Confirm the extension appears in the list as `@lxbrowser/chat` with no errors.
 
-The manifest now declares `host_permissions: ["https://openrouter.ai/*"]`. Chrome shows a
-permission warning on the card — that is expected, and it is the only permission.
+The manifest now declares `host_permissions` for OpenRouter, DuckDuckGo, a DNS resolver,
+and `https://*/*`. Chrome shows a permission warning on the card for the last one — that
+is expected. It is granted so the built-in `read_page` tool can fetch the URLs search
+returns, and [Environment](env.md) explains what that grant does and does not allow.
 
 ## Open it
 
@@ -68,6 +70,22 @@ them. Point the model at something cheap before you start.
 7. **Rename the chat.** Edit the title field; "Saved" flashes and the history list updates.
 8. **New chat, then switch between them.** Chats persist across a reload.
 9. **Drop a file on the dropzone.** It is listed. It is *not* attached to anything yet.
+10. **Make it look something up.** Ask a question a stored answer does not cover —
+    "what is the latest stable version of X" or "find me an article about Y". The centre
+    pane should log `· search_web(...)` and then `· read_page(...)` while it works, and the
+    answer should come back **naming where it got the facts**. Partial JSON in the
+    transcript or a raw tool argument as visible text means the streaming assembly is
+    broken.
+11. **Watch it rename the chat.** In the same answer, the title should change by itself,
+    once, to something that names the subject rather than repeating your question. The
+    history list should update to match.
+12. **Read the system instructions.** Open DevTools on the new-tab page:
+    ```js
+    const { get } = await import('./lib/instructions.js');
+    (await get()).slice(0, 80);   // the Main Agent's operating manual
+    ```
+    It should return the bundled text from `src/prompts/system-instructions.md`. Reload,
+    run it again — the same text, this time read from IndexedDB rather than the bundle.
 
 ### If a send fails
 
@@ -80,6 +98,11 @@ The reason appears under the Send button and in the agent log. The common ones:
 | `OpenRouter returned 400` with a model error | The model id is wrong. Type a different one in the custom box. |
 | `No OpenRouter key is stored` | Should be impossible — the modal blocks first. Reopen Settings and save the key again. |
 | `The background worker went away` | The service worker was terminated mid-request. Send again. |
+| `Stopped after 6 rounds of tool calls without an answer` | The model kept asking for tools instead of answering. Rephrase, or drop the custom model box for a known preset. |
+| `search_web failed: No results for "…"` | DuckDuckGo rate-limited, or its page structure changed. The latter is `parseSearchResults` in `src/tools.js`. |
+| `Only https URLs can be read` | A tool was pointed at a local file or a plain-http link. Expected — the model has to follow a search result instead. |
+| `Could not check where <host> points` | The DNS-over-HTTPS lookup failed or returned nothing, so the page was not read. The guard fails closed on purpose; retry, and check for a network that blocks `cloudflare-dns.com`. |
+| `… resolves to 169.254.169.254, which is a link-local address` | The guard caught a page trying to steer the agent at cloud credentials. This is the guard working. |
 
 ## Verifying the database layer
 

@@ -17,14 +17,20 @@ stack and are pushed; no pull request without an explicit yes.
 
 | # | Title | Scope (one line) | Repository | Branch | Files / areas | PR |
 |---|---|---|---|---|---|---|
-| 1 | Plan record | This file, written before the work | LXBrowser/chat | `docs/agents-setup` | `.agents/memory/tasks/` | |
-| 2 | Design system | Scatter `DESIGN.md` one subject per file | LXBrowser/chat | `docs/design-system` | `.agents/design/`, `.agents/index/` | |
-| 3 | Extension shell | Manifest, database layer, three-pane UI | LXBrowser/chat | `feat/chat-extension` | `manifest.json`, `src/` | |
+| 1 | Plan record | This file, written before the work | LXBrowser/chat | `docs/agents-setup` | `.agents/memory/tasks/` | #1 |
+| 2 | Design system | Scatter `DESIGN.md` one subject per file | LXBrowser/chat | `docs/design-system` | `.agents/design/`, `.agents/index/` | #2 |
+| 3 | Extension shell | Manifest, database layer, three-pane UI | LXBrowser/chat | `feat/chat-extension` | `manifest.json`, `src/` | #3 |
 | 4 | Core UI logic | API-key gate, multi-agent toggle, agent dropdown, history | LXBrowser/chat | `feat/chat-logic` | `src/ui/app.js`, `src/ui/lib/` | #4 |
-| 5 | Model layer | Service worker, streamed OpenRouter calls, real sub-agents | LXBrowser/chat | `feat/openrouter-integration` | `src/background.js`, `src/ui/lib/openrouter.js` | |
+| 5 | Model layer | Service worker, streamed OpenRouter calls, real sub-agents | LXBrowser/chat | `feat/openrouter-integration` | `src/background.js`, `src/ui/lib/openrouter.js` | #5 |
+| 6 | Tools and search | Tool-calling loop, `search_web` / `read_page` / `update_chat_title`, seeded system instructions | LXBrowser/chat | `feat/tools-and-search` | `src/tools.js`, `src/prompts/`, `src/background.js`, `src/ui/lib/` | #6 |
 
-The `PR` column stays empty until every branch is pushed. Filling it back afterwards would
-leave the earlier pull requests behind and force a rebase of the whole stack.
+The stack is a chain: task *k* branches from task *k-1*'s branch, and its pull request
+targets that branch rather than `master`, so each request shows only its own diff. The
+chain merges bottom-up — #6 into #5, #5 into #4, and so on — and **no task merges on its
+own**. Every step waits for the owner.
+
+The `PR` column was left empty while the branches were being pushed, and filled once all
+six were open.
 
 ### Task 1 — `docs/agents-setup`
 
@@ -244,3 +250,132 @@ reconnects on the next send.
 are the two seams the search tool extends: the search tool is another `type: 'chat'`
 variant from the page and another branch in the worker, not a new mechanism. The Main
 Agent's system prompt is the place a tool-use instruction goes.
+
+### Task 6 — `feat/tools-and-search`
+
+Tool calling, the built-in search-and-read tools, a tool that writes to the interface, and
+a system prompt that tells the Main Agent it has them.
+
+**Owner decisions taken before the work,** each of which changed the code:
+
+* **DuckDuckGo's HTML endpoint** for `search_web`. Keyless, so no third-party search account
+  is required — which is also why the extension parses someone else's markup with no API
+  contract behind it.
+* **`https://*/*` in `host_permissions`**, because `read_page` follows search results to
+  hosts that cannot be enumerated in advance.
+* **A bundled seed file, not the repository's `AGENTS.md`.** The extension cannot read a
+  file in this repository at runtime, so `src/prompts/system-instructions.md` ships with
+  the extension and seeds `agent_instructions` on first run.
+
+**The tool loop lives in the worker.** A tool round needs a second request, so the loop
+went where the requests already are; the page sends schemas and waits. It is bounded at six
+rounds and then says so, because the alternative is hanging until Chrome's five-minute cap
+kills the request with no explanation.
+
+**Tools are split by where they can run.** `search_web` and `read_page` execute in the
+worker, which already owns every cross-origin fetch. `update_chat_title` executes in the
+page — the worker has no `currentId` and no interface, so there is nothing there for it to
+rename. The worker forwards it as a `tool_request` over the same port and waits.
+
+**A tool failure is a result, not a crash.** Both paths convert an error into a `tool`
+message the model can route around. A page tool failing was originally treated differently
+from a network tool failing, which meant whether *renaming the chat* worked decided whether
+the agent could answer at all. That was a design flaw, not a bug: `askPageSafely()` now
+matches `runNetworkToolSafely()`, and the reasoning is in a comment so it does not get
+undone.
+
+**Streamed tool calls are reassembled by `index`,** and nothing is assigned on sight — the
+id arrives in the first fragment and the arguments are split wherever they fall. Only prose
+deltas reach the transcript; tool-call fragments are JSON arriving a few characters at a
+time and would fill the answer with a broken argument string.
+
+**`read_page` is guarded,** because a tool that fetches whatever the model names is the
+prompt-injection shape. At every hop — **including every redirect hop** — https only; the
+hostname **resolved and every returned address checked**; loopback, private, link-local and
+reserved IPv4 refused, `169.254.0.0/16` (cloud metadata) refused explicitly, and any IPv6
+outside `2000::/3` refused, which covers `::ffff:127.0.0.1` and every other way an IPv4
+address is dressed as IPv6. It **fails closed** when the resolver is unreachable. Downloads
+are capped at 5 MB by content-length and non-text content types refused. These are guards,
+not a sandbox, and the seed prompt tells the Main Agent to treat page content as data.
+
+Resolution goes through **DNS-over-HTTPS** rather than a plain lookup, because the guard
+trusts the answer and a plain lookup can be forged by whatever is on the path. The cost is
+a fourth host permission — `https://cloudflare-dns.com/*` — and an extra round-trip per
+`read_page`.
+
+**`search_web` distinguishes empty from broken.** "No results" and "the parser broke" look
+identical from outside the extension, and only one of them is the model's fault to work
+around, so they are different messages.
+
+**Sub-agents get no tools.** Each answers one focused turn; giving it a search tool would
+add a second billable round per sub-agent for a task with no transcript to justify it.
+
+**Seven bugs found by the tests, all before commit.** A temporal dead zone in
+`storage.js` that would have thrown on every page load. `match.index` destructured off the
+match array instead of the match object, so every search entry landed at position 0 and
+snippet pairing broke silently. A `*/` inside a block comment that closed the comment and
+made `src/tools.js` a syntax error. An unclosed `<script>` whose source leaked into
+extracted text. Snippets paired by index rather than by document position, which shifts
+every snippet up one when a single result has no snippet. `decodeEntities` never matching
+`#`, so `&#65;` stayed as written. And `requestPageTool` reading `call.function.arguments`
+after its caller had been changed to pass a flat shape.
+
+**A second pass, prompted by the owner approving a repository rule, closed three real
+holes in the guard** that the first version of it did not cover. `169.254.0.0/16` was
+never refused — so the cloud metadata address, the most valuable thing on a machine to be
+able to read, was reachable. IPv6 unique-local and link-local were never refused, and
+`::ffff:127.0.0.1` was not recognised as loopback. And redirects were followed with
+`redirect: 'follow'`, which meant a public page could bounce the request inward *after* the
+guard had run. It now resolves and checks every address at every hop, and fails closed.
+Writing the rule is what surfaced these: the rule says "on the resolved address, not the
+hostname's text", and the code was doing the opposite.
+
+**Verified.** 102 checks across five scripts under Node against stubbed `chrome` and
+`fetch`: 26 on the service worker (SSE handling, the tool loop, multi-call rounds, the loop
+bound, page-tool round-trips, and assertions that the key never appears in anything the
+worker posts), 11 on the model settings, 11 on the port client, 46 on the tools (search
+parsing, HTML-to-text, entity decoding, the guard including DNS rebinding across a redirect,
+and both network tools against a stubbed fetch), 8 on the page half of a tool round-trip,
+and 21 on the agent registry. Every module passes `node --check`; every import and DOM id
+resolves.
+
+**Not verified.** The DOM path, the real OpenRouter round-trip including whether it accepts
+these tool schemas, and whether DuckDuckGo still serves markup `parseSearchResults`
+recognises. Also unverified: that Chrome returns a readable `Location` header for a
+`redirect: 'manual'` response, which the redirect guard depends on — if it does not, the
+guard fails closed and `read_page` stops following redirects rather than becoming unsafe.
+The tool loop has only been driven by scripted SSE bodies. No Chrome in this environment;
+the check is written up in `wiki/environments/setup.md`.
+
+As before, the scripts were run from `/tmp` and **not committed**; the repository has no
+test runner and adding one was not in scope.
+
+**What the next task now depends on.** `update_chat_title` is the pattern any future tool
+that touches the interface follows: declare the schema in `src/tools.js`, implement it in
+`src/ui/lib/page-tools.js`, and it arrives at the worker through `pageToolNames()` without
+any change to `background.js`. The seeded instructions can be edited in `agent_instructions`
+and nothing in the UI writes them yet — that is the seam an instructions editor uses.
+
+### Task 6, cleanup pass — `feat/tools-and-search`
+
+Four dead-code findings from an audit at the end of task 6, all approved by the owner.
+
+* **`agents.simulate()` removed.** Task 4's entry calls it "the seam a real OpenRouter
+  round-trip replaces" — and task 5 replaced that seam, so ~40 lines of timer-driven code
+  had no callers. Its references in task 4's entry above are left as written: that entry
+  records what task 4 did, not what survived.
+* **`.dot--error` removed** from `components.css`. It resolved to `var(--sponsor)` — brand
+  pink — because the design system has no danger token, only `--ok` and `--warn`. The class
+  was unused, so nothing rendered wrong; the point is that an error in the sponsor colour
+  would have looked deliberate. Failures are carried by the label text until a danger token
+  exists. `.dot--done`, `.badge--ok` and `.badge--warn` are also unused but are left in
+  place: they resolve to real intent tokens, and removing them is a design decision.
+* **`maskedKey()` and `replaceApiKey()` removed**, neither of which had a caller.
+  `replaceApiKey`'s docblock claimed "the settings surface calls this" — it did not, and
+  `env.md` repeated the claim. `clearApiKey()` went with it, since `replaceApiKey` was its
+  only caller.
+* **`changeApiKey()`'s redundant branch removed.** A `saved === null` early return did
+  exactly what the `try` below it already did.
+
+Verified: every module passes `node --check`, no dangling references to any removed name,
+and the 102 checks still pass. Nothing in the removed set was reachable at runtime.

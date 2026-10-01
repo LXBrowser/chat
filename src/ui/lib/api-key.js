@@ -71,21 +71,15 @@ export function promptForKey() {
  * Replaces the stored key, from the settings surface.
  *
  * Cancelling is not an error here — unlike the first-run gate, refusing to replace a key
- * you already have is a legitimate choice, not a failure.
+ * you already have is a legitimate choice, not a failure. So the stored key is read first
+ * and returned on cancel, and there is no separate branch for "nothing stored yet": with
+ * nothing stored, cancelling resolves to null and `requireApiKey` opens the gate anyway.
  */
 export async function changeApiKey() {
   const saved = await storage.getApiKey();
-  if (saved === null) return promptForKey();
   try {
     return await promptForKey();
   } catch {
     return saved;
   }
-}
-
-/** The key's last four characters, for showing that one exists without revealing it. */
-export async function maskedKey() {
-  const key = await storage.getApiKey();
-  if (!key) return null;
-  return `••••${key.slice(-4)}`;
 }

@@ -380,7 +380,12 @@ a.card:hover {
 
 .dot--running { background: var(--accent); }
 .dot--done   { background: var(--ok); }
-.dot--error  { background: var(--sponsor); }
+
+/* There is deliberately no `.dot--error`. The design system has no danger token — only
+   `--ok` and `--warn` — so the obvious thing to reach for was `--sponsor`, which is a
+   brand pink. An error rendered in the sponsor colour is worse than no error colour:
+   it looks deliberate. Failures are carried by the label text until a danger token
+   exists to carry them honestly. */
 
 /* ===========================================================================
    Modal — OPAQUE, NOT GLASS

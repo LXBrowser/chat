@@ -1,7 +1,7 @@
 # 0.1.0 — 2026-10-01
 
-First release. The extension chats: prompts go to OpenRouter, answers stream back, and
-both are stored. The search-and-read tool is not built.
+First release. The extension chats: prompts go to OpenRouter, answers stream back, and both
+are stored. The main agent can search the web, read what it finds, and rename the chat.
 
 ## Added
 
@@ -38,8 +38,9 @@ both are stored. The search-and-read tool is not built.
 ### Extension shell
 
 * `manifest.json` — MV3, overriding the new tab, with a content security policy that
-  forbids remote code, a module service worker, and one host permission
-  (`https://openrouter.ai/*`). No `activeTab`, no `tabs`, no `<all_urls>`.
+  forbids remote code, a module service worker, and host permissions for OpenRouter,
+  DuckDuckGo, a DNS resolver, and `https://*/*`. No API permissions: no `activeTab`, no
+  `tabs`, no `scripting`.
 * `src/db.js` — three object stores behind a promise wrapper, so no calling code handles
   a raw `IDBRequest`. `message_index` is derived rather than accepted, and the
   `chat_messages.session_id` foreign key is enforced in code, because IndexedDB has no
@@ -84,6 +85,65 @@ both are stored. The search-and-read tool is not built.
 * **Send is guarded while a request is in flight.** A second click would stream two answers
   into the same transcript.
 
+### Tool calling
+
+* **The tool loop lives in the service worker**, not the page. A tool round needs a second
+  request, and holding the loop in one place is what bounds it — six rounds, then it gives
+  up with an explanation rather than hanging until Chrome's five-minute cap kills it.
+* Streamed `tool_calls` fragments are reassembled by `index`. The id arrives in the first
+  fragment and the arguments are split wherever they fall, so nothing can be assigned on
+  sight; a name that arrives in two pieces is appended, not overwritten.
+* **Tool-call fragments are never shown as transcript text.** They are JSON arriving a few
+  characters at a time, and only prose deltas go to the page.
+* The assistant turn is echoed back verbatim, `tool_calls` included, before the `tool`
+  messages — without it the API rejects the follow-up as answering no call.
+* **A tool failure is a result, not a crash.** Network tools and page tools both convert an
+  error into a `tool` message the model can route around. The two paths behave the same way
+  deliberately: if only one of them ended the conversation, whether renaming the chat worked
+  would decide whether the agent could answer at all.
+* Sub-agents are given **no tools**. A search tool costs a second API round, and a
+  sub-agent has no transcript to justify it.
+
+### Built-in tools
+
+* `src/tools.js` — the schemas the model is told about, and the network tools the worker
+  runs. Split by where a tool can actually run: `search_web` and `read_page` execute in
+  the worker, which already owns every cross-origin fetch; `update_chat_title` executes in
+  the page, which is the only context with a `currentId` and an interface.
+* `src/ui/lib/page-tools.js` — the page half of that split.
+* **`search_web`** queries DuckDuckGo's HTML endpoint, which needs no API key, and returns
+  titles, links, and snippets as JSON. An empty result is reported distinctly from a parse
+  failure, because from the model's side the two look identical and only one is worth
+  retrying differently.
+* **`read_page`** fetches a URL and returns readable text — markup, scripts, styles, and
+  comments removed, entities decoded in a single pass. Long pages are truncated; a page with
+  no readable text is an error rather than an empty answer.
+* **`read_page` is guarded**, because a tool that fetches whatever the model names is the
+  prompt-injection shape. At every hop, including every redirect hop: https only; the
+  hostname **resolved and every returned address checked**, refusing loopback, private,
+  link-local and reserved IPv4, `169.254.0.0/16` where cloud metadata lives, and any IPv6
+  outside `2000::/3` — including `::ffff:127.0.0.1` and the other ways an IPv4 address is
+  dressed as IPv6; bare and `.local` / `.internal` names refused outright; **fails closed**
+  if the resolver is unreachable; downloads capped at 5 MB by content-length; non-text
+  content types refused. Resolution is over DNS-over-HTTPS because the guard trusts the
+  answer and a plain lookup can be forged in transit. These are guards, not a sandbox — the
+  instruction file tells the main agent to treat page content as data.
+* **`update_chat_title`** renames the current session in `chat_sessions` and repaints the
+  title and the history list. The instruction file tells the model to use it once, with a
+  title that names the subject rather than repeating the question.
+
+### System instructions
+
+* `src/prompts/system-instructions.md` — the main agent's operating manual: the tools it
+  has, that it should look things up rather than claim them from memory, that it should say
+  when it looked, and what it cannot do. It ships with the extension; this repository's own
+  `AGENTS.md` is not packaged and cannot be read at runtime.
+* `src/ui/lib/instructions.js` — seeds the `agent_instructions` store on first run and reads
+  it thereafter, so the text can be edited locally without shipping a new bundle. If the
+  seed file cannot be read it falls back to a short string rather than failing to boot.
+* Only the main agent gets the instructions or the tools. A sub-agent is handed one focused
+  task as a single turn, so a delegated answer does not also cost a search.
+
 ### Memory
 
 * `.agents/memory/state/repository-state.md` — what exists, what does not, and the next
@@ -99,16 +159,25 @@ both are stored. The search-and-read tool is not built.
   phase, to keep the token cost and the architecture manageable.
 * **Sub-agent answers are not stored.** They stay in the agent log. `chat_messages` has no
   `subagent` role, and N extra answers per send would read as a bug in the transcript.
-* **No search tool**, no HTML scraping. Neither agent has tools of any kind.
+* **No search for sub-agents.** Tools are declared only for the main agent's requests.
+* **The search parser reads third-party HTML.** DuckDuckGo's keyless endpoint was chosen so
+  no search API key is needed, which means there is no contract behind the markup. It is
+  the most likely thing in this release to break silently; it fails with a message that
+  distinguishes an empty result from a parse failure.
 * **No cancel.** A request in flight can only be waited out.
 * **No separate sub-agent models** — main and sub-agents share whichever model is selected.
+* **The system instructions are not editable in the interface.** They are seeded into
+  `agent_instructions` and read from there, but nothing in the UI writes them yet.
+* **No way to forget a stored API key** other than replacing it. Removing it needs an
+  explicit control, not a side effect of cancelling.
 * **File attachments are listed, not read** — files appear in the dropzone but are never
   attached to a message.
 
 ## Cost
 
 Every prompt is a billable call, and multi-agent mode is one call for the main agent plus
-one per sub-agent.
+one per sub-agent. A prompt that uses tools is several calls for the main agent alone — one
+per round.
 
 ## Unverified
 
@@ -116,16 +185,19 @@ one per sub-agent.
 with no Chrome.
 
 Verified: every module passes `node --check`; every import and every DOM id target
-resolves. 37 checks run under Node against stubbed `chrome` and `fetch` — 15 on the service
-worker's SSE handling (frames split mid-JSON, role-only frames, unparseable frames,
-`[DONE]`, exactly-one-terminal, HTTP error passthrough, abort on disconnect, and two
-assertions that the key never appears in anything the worker posts), 11 on the model
-settings, 11 on the port client. The agent registry was exercised directly against the
-auto-remove contract — 21 checks.
+resolves. 102 checks run under Node against stubbed `chrome` and `fetch` — 26 on the
+service worker (SSE handling, the tool loop, and assertions that the key never appears in
+anything the worker posts), 11 on the model settings, 11 on the port client, 46 on the
+tools (search parsing, HTML-to-text, entity decoding, the SSRF guard including rebinding
+across a redirect, and both network tools against a stubbed fetch), 8 on the page side of
+a tool round-trip, and 21 on the agent registry against the auto-remove contract.
 
 Not verified: the DOM path and the real network round-trip — `app.js` boot order, the
-modal, the panes rendering, the streaming caret, and whether OpenRouter accepts these
-requests at all.
+modal, the panes rendering, the streaming caret, whether OpenRouter accepts these requests
+or the tool schemas at all, whether the DuckDuckGo endpoint still serves markup this
+parser recognises, and whether Chrome returns a readable `Location` for a
+`redirect: 'manual'` response as the redirect guard assumes. The tool loop has been driven
+only by scripted SSE bodies.
 
 The procedure is in [Setup](../../../../environments/setup.md).
 
@@ -141,3 +213,9 @@ The procedure is in [Setup](../../../../environments/setup.md).
   directory mandate, by explicit owner instruction. Recorded in `AGENTS.md` §Placement.
 * The agent-status dropdown and the OpenRouter modal are opaque, not glass — they cover
   page content. See `.agents/design/overlay-opacity.md`.
+* `https://*/*` is granted so `read_page` can follow a search result to an arbitrary host.
+  Chrome warns about it at install time. It is deliberate, and the tool's own guards are in
+  `src/tools.js` — see [Environment](../../../../environments/env.md).
+* **The `read_page` guard resolves DNS over HTTPS** and therefore needs
+  `https://cloudflare-dns.com/*`. It also fails closed: a network that blocks that
+  resolver makes `read_page` stop working rather than start reading unchecked hosts.
