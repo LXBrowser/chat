@@ -91,10 +91,10 @@
             aria-label="Active sub-agents"></ul>
       </div>
 
-      <p class="eyebrow" id="agent-status-line" style="margin-top:14px">Live log</p>
+      <p class="eyebrow push-top" id="agent-status-line">Live log</p>
       <pre class="log" id="agent-log" aria-live="polite">Waiting for an agent.</pre>
 
-      <div class="callout" id="agent-empty-callout" style="margin-top:14px">
+      <div class="callout push-top" id="agent-empty-callout">
         <span class="callout__icon" aria-hidden="true">i</span>
         <span>
           Sub-agents appear here while they run and <strong>leave the list as soon as they
@@ -113,11 +113,11 @@
       <button class="btn" type="button" data-action="open-settings">Settings</button>
     </header>
 
-    <div class="pane__body" style="display:flex;flex-direction:column;gap:12px;">
+    <div class="pane__body pane__body--stack">
 
       <!-- Chat title — writes chat_sessions.title. The built-in title tool. -->
       <div class="titlebar">
-        <label class="eyebrow" for="chat-title" style="margin:0">Title</label>
+        <label class="eyebrow eyebrow--flush" for="chat-title">Title</label>
         <input class="titlebar__input" id="chat-title" type="text" maxlength="255"
                placeholder="New Chat" aria-describedby="title-saved">
         <span class="titlebar__saved" id="title-saved" aria-live="polite">Saved</span>
@@ -126,26 +126,26 @@
       <!-- Multi-agent mode: toggle + agent cap. -->
       <div class="multiagent">
         <button class="btn" type="button" id="multiagent-toggle"
-                aria-pressed="false" data-on="false">
-          <span class="dot" id="multiagent-dot" aria-hidden="true"></span>
+                aria-pressed="false">
+          <span class="dot" aria-hidden="true"></span>
           <span id="multiagent-label">Multi-agent OFF</span>
         </button>
-        <label class="eyebrow" for="agent-limit" style="margin:0">Max agents</label>
+        <label class="eyebrow eyebrow--flush" for="agent-limit">Max agents</label>
         <input class="multiagent__count" id="agent-limit" type="number" min="1" value="3"
                inputmode="numeric" aria-describedby="agent-limit-hint">
       </div>
-      <p class="lead" id="agent-limit-hint" style="font-size:12px">
+      <p class="lead hint" id="agent-limit-hint">
         Sub-agents run concurrently, up to this cap.
       </p>
 
       <!-- Model picker. The custom field overrides the dropdown when it has a value. -->
       <div class="model">
-        <label class="eyebrow" for="model-select" style="margin:0">Model</label>
+        <label class="eyebrow eyebrow--flush" for="model-select">Model</label>
         <select class="model__select" id="model-select" aria-describedby="model-effective-hint"></select>
         <input class="model__custom" id="model-custom" type="text" spellcheck="false"
                autocomplete="off" placeholder="Custom model id (optional)"
                aria-label="Custom model id">
-        <p class="lead" id="model-effective-hint" style="font-size:12px;margin:0"></p>
+        <p class="lead hint" id="model-effective-hint"></p>
       </div>
 
       <!-- File import + drag and drop. -->
@@ -156,12 +156,12 @@
       </div>
       <input type="file" id="file-input" multiple hidden>
 
-      <!-- Prompt. -->
+      <!-- Prompt. The composer takes the pane's slack; the textarea scrolls. -->
       <div class="composer">
-        <label class="eyebrow" for="prompt" style="margin:0">Your prompt</label>
+        <label class="eyebrow eyebrow--flush" for="prompt">Your prompt</label>
         <textarea class="composer__input" id="prompt" placeholder="Ask the main agent…"
                   aria-describedby="prompt-hint"></textarea>
-        <p class="lead" id="prompt-hint" style="font-size:12px">
+        <p class="lead hint composer__hint" id="prompt-hint">
           <kbd>Ctrl</kbd>+<kbd>Enter</kbd> to send.
         </p>
       </div>

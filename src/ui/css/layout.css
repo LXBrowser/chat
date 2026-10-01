@@ -91,6 +91,23 @@ h1, h2, h3, h4 {
   padding: 14px 16px;
 }
 
+/* Right pane. The body is a flex column so the composer can absorb the space the
+   controls above it do not need, instead of overflowing into the footer.
+   `flex: 1 1 auto` and `min-height: 0` are inherited from .pane__body, and they
+   are what let a child shrink below its content rather than growing the pane.
+   The body keeps its own scroll as the floor for a short viewport. */
+.pane__body--stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Air above an element in a block-flow body — the centre pane's log heading and
+   its callout, which are not separated by a flex gap. */
+.push-top {
+  margin-top: 14px;
+}
+
 .pane__foot {
   flex: none;
   padding: 12px 16px;
@@ -249,14 +266,22 @@ h1, h2, h3, h4 {
 .composer {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  height: 100%;
-  min-height: 0;
+  gap: 0;              /* the label sits flush on the textarea's border */
+  /* Absorbs whatever the controls above it do not need. This was `height: 100%`,
+     which resolved against the whole body and pushed the column past the footer.
+     A percentage cannot do this job: it knows the container's height and nothing
+     about its siblings. */
+  flex: 1 1 200px;
+  /* The floor belongs on the composer, not on the textarea. Below it the pane
+     body scrolls — which keeps the composer usable — where a floor on the input
+     would only stop it giving the space back. */
+  min-height: 140px;
 }
 
 .composer__input {
   flex: 1 1 auto;
-  min-height: 120px;
+  min-height: 0;       /* was 120px — the second floor, and the overflow's cause */
+  overflow-y: auto;    /* too much text scrolls here, not in the pane */
   resize: none;
   width: 100%;
   padding: 11px 13px;
@@ -265,6 +290,10 @@ h1, h2, h3, h4 {
   background: var(--surface-solid);
   color: var(--ink-900);
   font: inherit;
+}
+
+.composer__hint {
+  margin-top: 8px;     /* the column's gap is 0, so the hint brings its own */
 }
 
 .composer__input:focus-visible {

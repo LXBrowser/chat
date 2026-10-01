@@ -136,9 +136,23 @@
   color: var(--ink-400);
 }
 
+/* An eyebrow that sits flush on the control it labels, where the component's own
+   gap already spaces the pair. Carried by four labels in the right pane. */
+.eyebrow--flush {
+  margin: 0;
+}
+
 .lead {
   margin: 0;
   color: var(--ink-500);
+}
+
+/* A `.lead` small enough to be a hint under a control rather than body copy.
+   All three sit in the right pane, under the agent cap, the model picker, and
+   the composer. */
+.hint {
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 /* --- Code --------------------------------------------------------------- */
@@ -380,6 +394,16 @@ a.card:hover {
 
 .dot--running { background: var(--accent); }
 .dot--done   { background: var(--ok); }
+
+/* The multi-agent toggle. Its colour is keyed off `aria-pressed`, which the
+   renderer already writes, so the state and its representation cannot disagree —
+   and no rule here needs a `style` attribute, which `style-src 'self'` forbids.
+   The OFF state is declared explicitly because `.btn`'s own colour is not
+   `--sponsor`, and losing the resting tint would be a visible regression. */
+#multiagent-toggle[aria-pressed='true']        { color: var(--ok); }
+#multiagent-toggle[aria-pressed='false']       { color: var(--sponsor); }
+#multiagent-toggle[aria-pressed='true']  .dot  { background: var(--ok); }
+#multiagent-toggle[aria-pressed='false'] .dot  { background: var(--sponsor); }
 
 /* There is deliberately no `.dot--error`. The design system has no danger token — only
    `--ok` and `--warn` — so the obvious thing to reach for was `--sponsor`, which is a
