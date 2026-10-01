@@ -23,6 +23,7 @@ stack and are pushed; no pull request without an explicit yes.
 | 4 | Core UI logic | API-key gate, multi-agent toggle, agent dropdown, history | LXBrowser/chat | `feat/chat-logic` | `src/ui/app.js`, `src/ui/lib/` | #4 |
 | 5 | Model layer | Service worker, streamed OpenRouter calls, real sub-agents | LXBrowser/chat | `feat/openrouter-integration` | `src/background.js`, `src/ui/lib/openrouter.js` | #5 |
 | 6 | Tools and search | Tool-calling loop, `search_web` / `read_page` / `update_chat_title`, seeded system instructions | LXBrowser/chat | `feat/tools-and-search` | `src/tools.js`, `src/prompts/`, `src/background.js`, `src/ui/lib/` | #6 |
+| 7 | Runtime defects | Remove the inline styles the CSP forbids; fix the right-pane composer overlap | LXBrowser/chat | `chore/csp-composer-layout-plan` → `fix/csp-and-composer-layout` → `docs/csp-and-composer-layout-release` | `src/ui/index.html`, `src/ui/css/`, `src/ui/lib/views.js` | — |
 
 The stack is a chain: task *k* branches from task *k-1*'s branch, and its pull request
 targets that branch rather than `master`, so each request shows only its own diff. The
@@ -379,3 +380,48 @@ Four dead-code findings from an audit at the end of task 6, all approved by the 
 
 Verified: every module passes `node --check`, no dangling references to any removed name,
 and the 102 checks still pass. Nothing in the removed set was reachable at runtime.
+
+### Task 7 — `chore/csp-composer-layout-plan` → `fix/csp-and-composer-layout`
+
+The first task driven by a **real browser run**. The owner loaded the extension unpacked in
+Chrome, and the two defects it reported are the first evidence this repository has ever had
+about how any of it actually looks.
+
+**Two defects, both in `src/ui/`.**
+
+* **A Content Security Policy violation.** `manifest.json` declares `style-src 'self'`,
+  which is correct and stays. `index.html` carried ten `style="…"` attributes, which that
+  directive forbids outright, so Chrome refused to apply them.
+* **The right pane overlapped its own footer.** `.composer` carried `height: 100%`. Inside
+  the flex column `.pane__body` becomes, a percentage height resolves against the whole
+  body — so the composer claimed the body's full height *regardless of the title bar,
+  toggle, model picker and dropzone stacked above it*, and overflowed by their combined
+  height. `.composer__input`'s `min-height: 120px` put a second floor under it, so it could
+  not give the space back either.
+
+**Nothing about the plan was speculative.** Task 6 ended by recording that the extension had
+never been loaded and that the DOM path was unverified. That was the gap; this is what
+coming out of it looks like. Two of the three things a browser tells you — whether a
+document parses under its own CSP, and whether a flex layout divides space the way the CSS
+says it should — cannot be checked by `node --check` or by a stubbed `fetch`.
+
+**A third inline-style source, found while fixing the first.** `renderMultiAgent` in
+`views.js` assigned `btn.style.color` and `dot.style.background` rather than toggling a
+class. CSSOM property assignment is *not* blocked by `style-src 'self'` — only the `style`
+attribute is — so it was not a violation. It is being converted anyway: the button already
+carries `aria-pressed`, the renderer's own comment says colour only *represents* that state,
+and a colour that lives in JS can drift from the state it claims to mirror. See the entry
+for what replaced it.
+
+**What this task does not fix.** The defects are in presentation only. Nothing about the
+service worker, the tool loop, the `read_page` guard, or storage is touched, and none of it
+was reached in the browser run that found these — the CSP error stops the page's own styles
+applying, which means **no owner has yet seen the interface render as intended at all.**
+Task 7 makes that possible; it does not assert it happened.
+
+**Verified.** No `style="` anywhere in the tree; no `setAttribute('style', …)`;
+`.composer` carries no percentage height; every module passes `node --check`.
+
+**Not verified — still.** The rendered result. This remains a visual fix, and a visual fix
+proves out in a browser, not in a test. The owner re-runs the checklist in
+`wiki/environments/setup.md` after a reload; the right pane is where to look.

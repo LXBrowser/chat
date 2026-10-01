@@ -292,12 +292,12 @@ export function renderMultiAgent({ multiAgentOn, agentLimit }) {
   const btn = $('multiagent-toggle');
   const label = $('multiagent-label');
   const count = $('agent-limit');
-  const dot = $('multiagent-dot');
 
   btn.setAttribute('aria-pressed', String(multiAgentOn));
-  btn.dataset.on = String(multiAgentOn);
-  btn.style.color = multiAgentOn ? 'var(--ok)' : 'var(--sponsor)';
-  dot.style.background = multiAgentOn ? 'var(--ok)' : 'var(--sponsor)';
+  // Colour is a stylesheet rule keyed off aria-pressed, not an assignment here:
+  // the manifest's `style-src 'self'` forbids the style attribute, and a tint set
+  // in JS can drift from the state it is supposed to be representing. `data-on`
+  // went with it — two attributes mirroring one state is the same drift, slower.
   label.textContent = multiAgentOn ? 'Multi-agent ON' : 'Multi-agent OFF';
 
   count.disabled = !multiAgentOn;
