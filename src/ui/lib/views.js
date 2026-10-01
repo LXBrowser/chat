@@ -21,9 +21,31 @@ function render(node, ...nodes) {
   return node;
 }
 
+/**
+ * Builds an element from a props object.
+ *
+ * `dataset` is unpacked rather than assigned. `HTMLElement.dataset` is declared
+ * `[SameObject] readonly attribute DOMStringMap` — it has no setter — so `Object.assign(node,
+ * { dataset: { … } })` throws in a strict-mode module rather than writing anything. Every
+ * caller here passed an object, which made `renderHistory()` die on its first element and
+ * took `boot()` down with it.
+ *
+ * Keys are camelCase and `DOMStringMap` does the `data-kebab-case` conversion, so
+ * `{ dataset: { sessionId } }` lands as `data-session-id` — the name `app.js` selects on.
+ */
 function el(tag, props = {}, ...children) {
   const node = document.createElement(tag);
-  Object.assign(node, props);
+
+  for (const [key, value] of Object.entries(props)) {
+    if (key === 'dataset') {
+      for (const [dataKey, dataValue] of Object.entries(value)) {
+        node.dataset[dataKey] = dataValue;
+      }
+    } else {
+      node[key] = value;
+    }
+  }
+
   node.append(...children);
   return node;
 }

@@ -119,3 +119,41 @@ handler it was supposed to serve. Task 3 touches `app.js` only and must not reor
 the gate-before-wiring sequence is what makes the cancel path recoverable, and moving
 listeners earlier would let a half-wired page look alive. Task 4 depends on the honesty of
 the documentation, which is that no control in this stack has been observed working.
+
+### Task 2 — `fix/dataset-attributes`
+
+`el()` now unpacks `dataset` into the `DOMStringMap` key by key, and everything else still
+goes through `node[key] = value` on the same pass. The `data-*` **names are unchanged** —
+`app.js` selects on them, so renaming one would have silently re-broken the click handler
+it was written to serve.
+
+**It works, and the harness says so.** 19 checks against the real extension in Chromium,
+all passing, no page errors: boot completes, the key gate closes, the model dropdown
+populates, `data-session-id` is a real attribute, and every control answers — history rows
+switch chats, delete removes one, the title input follows, the multi-agent toggle flips
+`aria-pressed`, Settings opens the modal and Cancel closes it, Clear empties the textarea,
+Send enters its busy state, stores the prompt, reports the outcome and re-enables, and a
+dropped file is listed.
+
+**Three of the four things the harness first reported as broken were the harness.** Worth
+recording, because the instinct on a second run is to go looking for a second product bug:
+
+| Reported as failing | Actually |
+|---|---|
+| `current()?.title` is `undefined` | `current()` returns the **id**; `getCurrent()` returns the record |
+| clicking the last row does not switch chats | the list is **newest-first**, so the last row is the one already open |
+| Send never responds | the dropzone click had raised a **native file picker** nobody answered, stalling the page before Send ran |
+
+The fourth — the dropzone's `fileInput.click()` — is a real property of the product, not a
+fault: it simply cannot be driven headlessly. The test drops a file through a synthetic
+`DragEvent` instead, which is the path that was reported.
+
+**A new static check, `/tmp/wt/dataset.test.mjs`, 17 assertions.** It asserts both
+directions, because both fail silently: that `el()` never returns to `Object.assign`, that
+every key is lowerCamelCase (which is what makes `sessionId` land as `data-session-id`),
+that every `[data-…]` selector in `app.js` matches a key `views.js` writes, and that every
+key `views.js` writes is read. Verified in both directions — it fails on the pre-fix file
+and fails on a deliberate one-sided rename.
+
+**The check is not committed**, like every other check here: the repository has no package
+manager, no build step and no runner, and this one needs a live DOM to mean anything.
