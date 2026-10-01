@@ -170,16 +170,17 @@
 </main>
 
 <!-- ══════════════════════════════════════════════════════════════════════
-     app.js lands with the logic pass, imported from here as:
+     app.js owns the wiring: the API-key gate, settings, the database
+     connection, and every listener. The data lives in ./lib/ — sessions
+     owns the database, agents owns the registry, views owns the DOM.
 
-         <script type="module" src="app.js"></script>
-
-     It owns: the API-key gate, loading and rendering sessions, the
-     composer, the agent dropdown and its auto-remove, and file import.
-     Until then every control above is inert by design.
+     No service worker yet. Nothing here is cross-origin, so there is
+     nothing for one to do; it arrives with the search tool, which is
+     what actually needs host_permissions.
 
      The database layer is src/db.js — one directory up from this page, so
      the console import path is '../db.js'.
      ══════════════════════════════════════════════════════════════════ -->
+<script type="module" src="app.js"></script>
 </body>
 </html>

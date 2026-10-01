@@ -28,8 +28,14 @@ src/
   db.js                IndexedDB wrapper. Three object stores, promisified.
   ui/
     index.html         The three panes, the key modal, the settings surface.
-    app.js             NOT YET WRITTEN. index.html ends with a comment marking
-                       where its <script type="module"> tag goes.
+    app.js             Wiring only. Boot order, then listeners.
+    lib/
+      storage.js       chrome.storage.local. API key and UI settings.
+      agents.js        The agent registry. list() returns only running
+                       agents — that is what makes auto-remove total.
+      sessions.js      The only module that touches the database.
+      views.js         All DOM rendering. No state of its own.
+      api-key.js       The blocking key gate.
     icons/             Extension icon, referenced from the manifest.
     css/
       tokens.css       Design tokens, lifted verbatim from the design system.

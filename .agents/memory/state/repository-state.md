@@ -27,6 +27,7 @@ here, and the override table in the root index is empty.
 * `wiki/` — `information/overview.md`, `environments/setup.md`, `environments/env.md`.
 * `manifest.json` — MV3, new-tab override, no permissions, no service worker.
 * `src/db.js` — IndexedDB wrapper, three object stores, promisified, FK enforced in code.
+* `src/ui/app.js` — the wiring. Five modules under `src/ui/lib/`.
 * `src/ui/index.html` + `src/ui/css/` — the three-pane interface and its styles.
 * `src/ui/icons/icon-128.png` — generated icon.
 * `wiki/logs/0/1/0/CHANGELOG.md` — the only release.
@@ -39,25 +40,37 @@ models.
 
 ## What is not built
 
-The entire agent runtime. Concretely:
+The model layer. Concretely:
 
-* `app.js` and `background.js` do not exist, so **every control on the page is inert**.
-* No OpenRouter client, no streaming, no key handling — the modal is markup only.
-* No agent orchestration: no spawn, no monitor, no synthesis, no dropdown auto-remove.
-* No search tool, no background fetcher, no HTML scraping.
-* No file import, no drag-and-drop wiring.
+* **No OpenRouter client.** The key is stored and gated, but nothing calls the API.
+* **No streaming, no synthesis.** A sent prompt is recorded as a user message and nothing
+  answers it yet.
+* **No real sub-agents.** `agents.simulate()` emits canned steps on a timer. It is the
+  seam a real round-trip replaces.
+* **No search tool**, no background fetcher, no HTML scraping.
+* **No `background.js`** — nothing here is cross-origin, so there is nothing for a service
+  worker to do yet. It arrives with the search tool, which brings `host_permissions`.
+* **File attachments are listed, not read.** Files appear in the dropzone; their contents
+  are never attached to a message.
 
-That is deliberate — the layout was approved before the logic.
+## What works today
+
+* Load unpacked; the API-key modal blocks until a key is stored.
+* New chat, open chat, delete chat, rename chat — all against IndexedDB.
+* Send a prompt; it is written to `chat_messages` and the transcript updates.
+* Toggle multi-agent mode; the limit input enables and validates at ≥ 1.
+* Send with multi-agent on; sub-agents appear in the centre dropdown, log as they work,
+  and **leave the dropdown when they finish**.
 
 ## What has not been verified
 
 **The extension has never been loaded in a browser.** There is no Chrome in the authoring
-environment. `db.js` was syntax-checked and the manifest was parsed, but the page has not
-rendered and `db.js` has not been exercised at runtime.
+environment. Every module passes `node --check`, every import and DOM id resolves, and the
+agent registry and limit validation were exercised directly under Node. But the DOM path —
+`app.js` boot order, the modal, and the panes rendering — is untested.
 
-The verification procedure is written up in `wiki/environments/setup.md` for the owner:
-load unpacked, check the three panes render, then run the `db.js` round-trip and its two
-negative paths from the new-tab console.
+The procedure is in `wiki/environments/setup.md`: load unpacked, walk the working list
+above, then run the `db.js` round-trip and its two negative paths from the console.
 
 ## Known open item
 

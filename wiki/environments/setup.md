@@ -34,6 +34,25 @@ through **Load unpacked** and the new-tab override.
 Chrome does not reload unpacked extensions automatically. Press the reload icon on the
 extension card at `chrome://extensions` after every change, then reopen the new tab.
 
+## Checking the interface
+
+The extension has never been run in CI, so this is a manual pass. Work down it.
+
+1. **Load unpacked.** Open a new tab. A modal blocks the app asking for an OpenRouter
+   key — nothing else is usable until you provide one.
+2. **Send something.** Type a prompt, press **Send**. It appears in the left pane, and the
+   chat is titled from the first line rather than staying "New Chat".
+3. **Turn multi-agent on.** The pill goes from red **OFF** to green **ON**, and the max
+   agents field becomes editable. Clear it and press Tab — it should snap to `1`, not stay
+   empty.
+4. **Send again with the cap at 3.** Three agents appear in the centre dropdown, log as
+   they work, and **each disappears as it finishes**. Watch one: when the one you have
+   selected finishes, the pane should fall back to another running agent rather than going
+   blank.
+5. **Rename the chat.** Edit the title field; "Saved" flashes and the history list updates.
+6. **New chat, then switch between them.** Reload the page — the chats are still there.
+7. **Drop a file on the dropzone.** It is listed. It is *not* attached to anything yet.
+
 ## Verifying the database layer
 
 With the new-tab page open, open the DevTools console and run:

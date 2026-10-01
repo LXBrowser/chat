@@ -34,23 +34,25 @@ built-in search-and-read tool, and keep every conversation in local storage.
 
 ## Current state
 
-`0.1.0` is a **shell**. What exists:
+`0.1.0` has a **working interface over no model**. What you can do today:
 
-* the MV3 manifest and the three-pane interface
-* the design system that governs how it looks, under `.agents/design/`
-* the IndexedDB layer, verified by direct console calls
+* load it unpacked; an API-key modal blocks the app until a key is stored
+* start, open, rename, and delete chats — all stored locally in IndexedDB
+* send a prompt; it is recorded and the transcript updates
+* switch multi-agent mode on, set a cap, and send — sub-agents appear in the centre
+  dropdown, log as they work, and **leave the list the moment they finish**
 
-What does not exist yet, and is the subject of the next work:
+What does not exist yet:
 
-* the OpenRouter client and the API-key flow
-* agent orchestration — spawning, monitoring, and synthesis
-* the background fetcher behind the search tool
-* file import and drag-and-drop wiring
-
-The buttons, dropdowns, and inputs for all of these are on the page already. They do not
-do anything yet.
+* **no OpenRouter client** — the key is stored, but nothing calls the API, so a sent
+  prompt is never answered
+* **no real sub-agents** — they run on a timer through canned steps
+* **no search tool** and no background fetcher
+* **file attachments are listed, not read** — files appear in the dropzone but are never
+  attached to a message
 
 ## Next steps
 
 1. Load the extension unpacked — see [Setup](../environments/setup.md).
-2. Point it at an OpenRouter key — see [Environment](../environments/env.md).
+2. Walk the checklist there to confirm the interface behaves before any of the above is
+   built on top of it.
