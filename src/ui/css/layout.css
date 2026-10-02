@@ -205,10 +205,22 @@ h1, h2, h3, h4 {
   flex-direction: column;
   gap: 12px;
   /* Takes the slack left by the picker and the status row above it, and scrolls
-     itself rather than pushing the composer off the pane. */
+     itself rather than pushing the composer off the pane.
+
+     `min-height: 0` is what makes that true. Without it this is a flex item whose
+     automatic minimum size is its content, so a long conversation pushes the pane
+     taller instead of scrolling — the overflow below would never engage. Do not
+     remove it.
+
+     `overflow-x: hidden` because `.msg__body` wraps with `overflow-wrap: anywhere`,
+     which stops a long unbroken token forcing a horizontal scrollbar. A horizontal
+     scrollbar here is not merely ugly: it appears at the bottom of a container that
+     is already scrolled, and it shifts every bubble sideways relative to every other
+     one, which is what "messages overlap awkwardly" looks like from the inside. */
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .msg {
@@ -221,6 +233,20 @@ h1, h2, h3, h4 {
      right — `align-self` does it, because the column is a flex container. */
   max-width: 78%;
   align-self: flex-start;
+  /* `flex: none` rather than the default `flex: 0 1 auto`.
+
+     This is a *column* flex container, so the axis these items shrink on is height,
+     not width. Every message was computing `flex-shrink: 1`, which means a bubble is
+     willing to be squashed vertically whenever the column is short on room. Text
+     usually survives that on its min-content height, and a measurement over a long
+     conversation found no clipping — but a bubble that is still empty, which is
+     exactly what `startStream()` appends before the first chunk lands, and a
+     one-word answer, have a min-content height near zero and are not protected.
+
+     `flex: none` makes "each message is as tall as its text" structural rather than a
+     consequence of how much text a given message happens to contain, and it hands the
+     overflow to the `overflow-y: auto` above, which is what that declaration is for. */
+  flex: none;
 }
 
 .msg--user {
