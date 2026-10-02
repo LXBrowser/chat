@@ -44,6 +44,12 @@ const DONE = '[DONE]';
  *
  * Not a safety limit so much as a loop limit: a model that keeps re-searching the same
  * query would otherwise run until Chrome's five-minute cap killed it, with no explanation.
+ *
+ * The loop below runs `round = 0 … MAX_TOOL_ROUNDS` and raises its failure *at* the last
+ * round, so the model gets exactly this many tool rounds and then one final chance to
+ * answer with what it already has. That final chance is why the bound is inclusive: a
+ * model that used its last tool call and could have answered from it should be allowed
+ * to. The message names this number, so the two cannot drift apart again.
  */
 const MAX_TOOL_ROUNDS = 6;
 
@@ -92,6 +98,17 @@ chrome.runtime.onConnect.addListener((port) => {
       settlePageCall(port, message);
       return;
     }
+
+    // The keep-alive. Answering is the point: an inbound message is what resets Chrome's
+    // idle timer, so the reply is what keeps this worker from being recycled while the
+    // page is between sends. It does not extend a single request — Chrome caps that at
+    // roughly five minutes whatever is sent to it — so a request stopped mid-stream is
+    // recovered on the page by re-sending, not by this.
+    if (message?.type === 'ping') {
+      post(port, { type: 'pong' });
+      return;
+    }
+
     void handle(port, message);
   });
 });

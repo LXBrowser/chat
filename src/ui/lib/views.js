@@ -116,6 +116,16 @@ export async function renderTranscript() {
   const pane = $('transcript');
   const messages = await sessions.listMessages();
 
+  // A response can be arriving while the transcript is repainted for another reason — a
+  // rename, a session switch. The in-flight node is not in the database yet, so it has to
+  // be carried across the redraw or the text the user is watching vanishes mid-answer.
+  //
+  // Captured before the rebuild, because `render` detaches everything, and re-checked
+  // against the current value afterwards: if the answer completed while this repaint was
+  // waiting on the database, the stored copy is now in `nodes` and re-appending the
+  // streamed one would show the same answer twice.
+  const live = stream;
+
   if (!messages.length) {
     render(
       pane,
@@ -126,18 +136,15 @@ export async function renderTranscript() {
         el('p', { className: 'lead', textContent: 'Write a prompt on the right and send it.' }),
       ),
     );
+
+    // Carried across here too, and the omission was the bug: this branch returned
+    // without it, so a repaint against an empty session destroyed the streaming bubble
+    // and left `stream` pointing at a detached node. Every delta after that was appended
+    // into nothing — the answer kept arriving and the user saw none of it.
+    if (live && live === stream) pane.append(live);
+
     return;
   }
-
-  // A response can be arriving while the transcript is repainted for another reason — a
-  // rename, a session switch. The in-flight node is not in the database yet, so it has to
-  // be carried across the redraw or the text the user is watching vanishes mid-answer.
-  //
-  // Captured before the rebuild, because `render` detaches everything, and re-checked
-  // against the current value afterwards: if the answer completed while this repaint was
-  // waiting on the database, the stored copy is now in `nodes` and re-appending the
-  // streamed one would show the same answer twice.
-  const live = stream;
 
   const nodes = messages.map((m) =>
     el(
@@ -196,6 +203,19 @@ export function pushDelta(handle, chunk) {
 }
 
 /**
+ * Empties the streaming message but keeps its bubble.
+ *
+ * Used once, when a retried request produces its first chunk. The retry re-sends the
+ * whole conversation, so the model regenerates the answer from the beginning — leaving
+ * the interrupted attempt's text in place would concatenate two answers into one message
+ * and store both. The bubble stays so the pane does not blink between attempts.
+ */
+export function clearStream(handle) {
+  if (!handle) return;
+  handle.body.replaceChildren();
+}
+
+/**
  * Closes the streaming message without removing it — the streaming caret goes, whatever
  * arrived stays, so a partial answer is still readable after a failure.
  *
@@ -213,17 +233,31 @@ export function endStream() {
 }
 
 /**
- * Drops the streaming node entirely because its text is about to be stored.
+ * Gives up ownership of the streaming node because its text is about to be stored.
  *
  * Called **before** the write, not after. The write repaints the transcript from the
  * database, so clearing the reference first is what guarantees that repaint sees no
  * streaming node and cannot show the same answer twice.
+ *
+ * **It no longer removes the node, and that is the whole fix.** It used to. The write
+ * that repaints the transcript is asynchronous — IndexedDB, then a repaint — so removing
+ * synchronously left the answer off screen for the whole of that gap. Observed by
+ * mutation rather than inferred: the transcript went from two messages holding 48
+ * characters, to one holding 5, and back again. A completed answer blinking out of
+ * existence and returning is what "messages seem to disappear" looks like, and it
+ * happened on **every** successful send.
+ *
+ * Clearing `stream` while leaving the node in place gives the repaint exactly what it
+ * needs: `renderTranscript` sees no live node to carry across, so its rebuild replaces
+ * this one with the stored copy. Nothing is removed by hand and nothing has to wait.
+ *
+ * It also means a failed write leaves the answer on screen. `endStream()` is a no-op once
+ * `stream` is null, so the partial or complete text the user watched stream stays readable
+ * instead of being taken away at the moment it stops being guaranteed.
  */
 export function discardStream() {
-  const node = stream;
   stream = null;
   setStreaming(false);
-  node?.remove();
 }
 
 /** Writes the open session's title into the title input. */

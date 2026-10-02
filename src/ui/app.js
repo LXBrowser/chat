@@ -222,8 +222,34 @@ function wireConversation() {
   // The database is the source of truth for sessions, so *any* change repaints the
   // pane. Nothing below calls refreshConversation() directly — one subscription is
   // both simpler and avoids two overlapping repaints racing to render stale data.
+  //
+  // Serialised, and the serialisation is load-bearing. Two repaints can be in flight at
+  // once — each awaits the database before it rebuilds — and the slower one then writes
+  // its older snapshot over the newer one. That is not merely a stale render: if the
+  // older snapshot was read before an answer was stored, it repaints the transcript
+  // without that answer, and the answer the user is watching disappears.
+  //
+  // A change arriving mid-repaint is not dropped: it sets `repaintAgain`, and the
+  // repaint drains once more before it stops. Coalescing rather than dropping is what
+  // keeps the count right — a burst of writes becomes one extra repaint, not none.
+  let repainting = false;
+  let repaintAgain = false;
+
+  const repaint = async () => {
+    repainting = true;
+    try {
+      while (repaintAgain) {
+        repaintAgain = false;
+        await refreshConversation();
+      }
+    } finally {
+      repainting = false;
+    }
+  };
+
   sessions.onChange(() => {
-    void refreshConversation();
+    repaintAgain = true;
+    if (!repainting) void repaint();
   });
 
   // Open a different chat.
@@ -469,26 +495,57 @@ async function runMainAgent(history) {
   // hundreds of times for no visible difference — the row changes in place either way.
   let streaming = false;
 
+  // True once a retry has produced its first chunk. The interrupted attempt's text is
+  // cleared at that point rather than when the retry starts, so the answer is on screen
+  // for the whole of the reconnect instead of blinking empty.
+  let restarted = false;
+
+  const spec = {
+    model,
+    system: systemPrompt,
+    messages: history,
+    tools: TOOL_SCHEMAS,
+    pageTools: pageToolNames(),
+    onDelta: (delta) => {
+      // A retry re-sends the whole conversation, so the model answers from the beginning
+      // again. Leaving the interrupted text underneath would store two answers
+      // concatenated into one message.
+      if (restarted) {
+        restarted = false;
+        views.clearStream(handle);
+      }
+
+      if (!streaming) {
+        streaming = true;
+        setActivity('Writing…', { running: true });
+      }
+      views.pushDelta(handle, delta);
+    },
+    onToolCall: (call) => {
+      streaming = false;
+      setActivity(toolActivity(call.name), { running: true });
+    },
+    onTool: (name, args) => runPageTool(name, parseArgs(args)),
+  };
+
   try {
-    const answer = await openrouter.chat({
-      model,
-      system: systemPrompt,
-      messages: history,
-      tools: TOOL_SCHEMAS,
-      pageTools: pageToolNames(),
-      onDelta: (delta) => {
-        if (!streaming) {
-          streaming = true;
-          setActivity('Writing…', { running: true });
-        }
-        views.pushDelta(handle, delta);
-      },
-      onToolCall: (call) => {
-        streaming = false;
-        setActivity(toolActivity(call.name), { running: true });
-      },
-      onTool: (name, args) => runPageTool(name, parseArgs(args)),
-    });
+    let answer;
+    try {
+      answer = await openrouter.chat(spec);
+    } catch (err) {
+      // One retry, and only for a worker that went away mid-answer. A request the worker
+      // answered — a 401, an exhausted balance, an empty response — is re-asking a
+      // question that has already been answered, and would spend a call to be refused
+      // the same way.
+      if (!openrouter.isRetryable(err)) throw err;
+
+      // Said out loud, because it costs money. A retry the user cannot see is a silent
+      // re-bill, and this one is triggered by a failure they are watching happen.
+      setActivity('Reconnecting…', { running: true });
+      restarted = true;
+      streaming = false;
+      answer = await openrouter.chat(spec);
+    }
 
     // Checked before the agent finishes: an empty answer is a failure, and reporting it
     // after `finish` would find the agent already out of the active list, so nothing

@@ -11,9 +11,26 @@
  * The port is lazy and self-healing. An MV3 worker is terminated when idle, which closes
  * any port it held, so a disconnect is an expected event rather than an error — the next
  * call reconnects.
+ *
+ * **What the keep-alive is and is not.** While a request is in flight this module pings
+ * the worker, and the worker answers, because an inbound message is what resets Chrome's
+ * idle timer. It keeps the worker warm between sends. It does **not** prevent the failure
+ * this module also handles: a worker stopped mid-answer — by an extension reload, memory
+ * pressure, or Chrome's five-minute cap on a single request — dies whatever is sent to it.
+ * That case is survived by reconnecting and re-sending, which is what `isRetryable()` is
+ * for. Measured, not assumed: a 45-second quiet stretch with no ping at all completed
+ * normally, because a pending `fetch` already holds the worker alive.
  */
 
 const PORT_NAME = 'openrouter';
+
+/**
+ * How often to ping while something is in flight.
+ *
+ * Comfortably inside Chrome's idle window, so one dropped ping is not fatal. Long enough
+ * that it is not traffic.
+ */
+const PING_INTERVAL_MS = 20_000;
 
 let port = null;
 
@@ -21,6 +38,9 @@ let port = null;
 const pending = new Map();
 
 let nextRequestId = 1;
+
+/** Non-null only while at least one request is in flight. */
+let pingTimer = null;
 
 // ---------------------------------------------------------------------------
 // Port lifecycle
@@ -58,6 +78,11 @@ function connect() {
         void answerToolRequest(message, entry);
         break;
 
+      case 'pong':
+        // Evidence the worker is alive. Nothing to do with it, and deliberately not
+        // forwarded to `entry` — it carries no requestId, so it would be dropped anyway.
+        break;
+
       default:
         break;
     }
@@ -65,15 +90,95 @@ function connect() {
 
   port.onDisconnect.addListener(() => {
     port = null;
+    stopKeepAlive();
 
-    // Chrome reports the reason through chrome.runtime.lastError. Reading it is what
-    // clears it, and it is the difference between "the worker went idle" and a real
-    // failure the user could act on.
-    const reason = chrome.runtime.lastError?.message ?? 'The background worker went away.';
-    for (const [id] of pending) settle(id, 'reject', new Error(reason));
+    // `chrome.runtime.lastError` is only populated inside the callback that failed, and a
+    // port disconnect generally reports nothing through it. That is not a reason to
+    // discard the detail when it is there — but it is why this used to show the same
+    // generic sentence for every distinct cause, and why that sentence named a guess.
+    const detail = chrome.runtime.lastError?.message;
+
+    // Every request in flight is retryable: nothing came back, so nothing was stored and
+    // there is no partial result to protect. A request that failed *with* an answer — a
+    // 401, an empty response — is not in this loop and is never retried.
+    for (const [id] of pending) {
+      settle(id, 'reject', transportError(
+        'The background worker stopped before this answer finished.',
+        detail,
+      ));
+    }
   });
 
   return port;
+}
+
+// ---------------------------------------------------------------------------
+// Keep-alive
+// ---------------------------------------------------------------------------
+
+/**
+ * Starts pinging the worker, if nothing already has.
+ *
+ * Tied to `pending` rather than to the page: a permanent timer would mean a permanently
+ * live worker for a tab nobody is talking to, which is the opposite of what an extension
+ * should do with the machine's battery.
+ */
+function startKeepAlive() {
+  if (pingTimer !== null) return;
+
+  pingTimer = setInterval(() => {
+    if (!pending.size) {
+      stopKeepAlive();
+      return;
+    }
+    try {
+      port?.postMessage({ type: 'ping' });
+    } catch {
+      // The port is gone. `onDisconnect` owns that case and settles the requests; a ping
+      // that throws must not try to settle them a second time.
+    }
+  }, PING_INTERVAL_MS);
+}
+
+function stopKeepAlive() {
+  if (pingTimer === null) return;
+  clearInterval(pingTimer);
+  pingTimer = null;
+}
+
+// ---------------------------------------------------------------------------
+// Failures
+// ---------------------------------------------------------------------------
+
+/**
+ * An error the page may safely re-issue the same request for.
+ *
+ * The distinction is the whole of the retry policy. A transport loss means the request
+ * never produced a result, so re-sending it is free of consequence beyond the call itself.
+ * A request the worker *answered* — a 401, a 402, an empty answer — has already been
+ * decided, and re-sending it would spend money to be refused again.
+ *
+ * @param {string} message  What to show.
+ * @param {string} [detail] Whatever Chrome reported, when it reported anything.
+ */
+function transportError(message, detail) {
+  const err = new Error(detail ? `${message} (${detail})` : message);
+  err.retryable = true;
+  return err;
+}
+
+/**
+ * Whether a failed request is worth sending again.
+ *
+ * True only for a lost worker. Every other failure — a rejected key, an exhausted
+ * balance, a model that returned nothing — is a decision the worker already reached and
+ * re-asking would only repeat.
+ *
+ * @param {unknown} err
+ * @returns {boolean}
+ */
+export function isRetryable(err) {
+  return Boolean(err?.retryable);
 }
 
 /** Settles one request and drops it from the table. */
@@ -81,6 +186,10 @@ function settle(requestId, how, value) {
   const entry = pending.get(requestId);
   if (!entry) return;
   pending.delete(requestId);
+
+  // The last one out stops the ping, so an idle tab is not holding a worker open.
+  if (!pending.size) stopKeepAlive();
+
   if (how === 'resolve') entry.resolve(value);
   else entry.reject(value);
 }
@@ -155,18 +264,30 @@ export function chat({
     try {
       live = connect();
     } catch (err) {
-      reject(new Error(`The background worker is unavailable: ${err.message}`));
+      // Connecting itself failed — no extension context, or the worker could not be
+      // reached at all. Retryable, and worth saying so: this is the same event as a
+      // worker stopping mid-answer, caught a moment earlier.
+      reject(transportError('The background worker is unavailable.', err.message));
       return;
     }
 
     pending.set(requestId, { onDelta, onTool, onToolCall, resolve, reject, text: '' });
+    startKeepAlive();
 
     try {
       live.postMessage({ type: 'chat', requestId, model, system, messages, tools, pageTools });
     } catch (err) {
-      // The worker died between `connect()` and `postMessage`. Nothing is in flight,
-      // so this is a plain failure rather than a hanging request.
-      settle(requestId, 'reject', new Error(`Could not reach the background worker: ${err.message}`));
+      // The worker died between `connect()` and `postMessage`. Nothing is in flight, so
+      // this is a plain failure rather than a hanging request — but the cached port is
+      // now known to be dead, and it is dropped here. `onDisconnect` does not always fire
+      // for a recycled worker, and a stale port left in place would make every later call
+      // fail the same way with no way back.
+      port = null;
+      stopKeepAlive();
+      settle(requestId, 'reject', transportError(
+        'The background worker went away before the request could start.',
+        err.message,
+      ));
     }
   });
 }

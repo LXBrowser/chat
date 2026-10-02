@@ -110,6 +110,12 @@ pull the credential in even by accident.
   state their reason. **Confirmed against a stubbed 401.** It used to be written to a log
   pane the person sending was not looking at, so every failure presented as a Send that
   did nothing.
+* **A worker that dies mid-answer is reconnected and retried once**, with the status row
+  showing `Reconnecting…` for the duration so the second billable call is never silent.
+  **Confirmed against a real worker kill** — the status row is observed passing through
+  `Working… → Reconnecting… → Writing… → Answer ready`, the OpenRouter request is counted
+  at exactly two, and the user turn is stored exactly once. A request the worker already
+  *answered* is never retried: a 401 makes one request and shows its reason.
 
 ## Limits worth knowing
 
@@ -118,8 +124,11 @@ pull the credential in even by accident.
 * **A single request is capped at roughly five minutes** by Chrome. A very long answer is
   cut mid-stream and surfaces as an error, not a completion. The tool loop has its own
   bound of six rounds.
-* **The service worker is terminated when idle.** A termination mid-stream loses that
-  request; the port reconnects on the next send.
+* **The service worker is terminated when idle.** A termination mid-stream is now
+  retried once, visibly. **A ping keeps the worker warm between sends, but a pending
+  `fetch` already holds it alive during a stream** — measured with a 45-second quiet
+  stretch and no ping at all, which completed normally. The ping is not what prevents the
+  reported error; the reconnect is.
 * **`https://*/*` is granted** so `read_page` can follow a search result to any host. It is
   deliberate and it is broad; the guards are in the tool, not the permission. The guard
   resolves DNS over HTTPS and **fails closed**, so a network that blocks
@@ -173,6 +182,15 @@ The test scripts live in `/tmp` and are **not committed** — the repository sta
 test runner, and adding one was out of scope. They are the obvious first candidate if that
 changes.
 
+**Since the sixth run there is a browser harness that can execute the extension**, which
+the static suite never could. Playwright loads the unpacked extension into a real Chromium
+with the full build rather than `chrome-headless-shell` — the shell cannot load an
+extension at all. OpenRouter is stubbed with `context.route` at the browser-context level,
+**not** by patching `fetch` inside the worker: a worker-side patch dies the moment Chrome
+recycles the worker, and every test in that suite is about a worker that gets recycled.
+The scripts stay in `/tmp` because `.agents/rules/repository.md` forbids a `package.json`
+and `node_modules` in this repository, and installing them at the root would breach it.
+
 ## Known open items
 
 **Nothing stops a `style="…"` from coming back.** `manifest.json`'s `style-src 'self'` will
@@ -194,7 +212,9 @@ so nothing is a dead end.
 
 Minor divergence from the shared convention: `plan_creator` specifies `/.agents/plans/`
 with a leading slash; the `.gitignore` uses `.agents/plans/`. Functionally equivalent here,
-since there is one such folder. That file **is** committed.
+since there is one such folder. **The folder itself is untracked and excluded by
+`.gitignore`** — confirmed with `git check-ignore` before anything was written into it. An
+earlier version of this file claimed the opposite.
 
 ## Next obvious step
 
