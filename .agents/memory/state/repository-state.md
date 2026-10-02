@@ -15,6 +15,20 @@ As of `0.1.0`, 2026-10-01.
 Nothing from the set is vendored — there is no `git/`, `prompts/`, or `creators/` folder
 here, and the override table in the root index is empty.
 
+**The connector registers and reports connected, but publishes no tools to the session.**
+Observed four times across three sessions, each after a restart: `claude mcp list` reports
+`✔ Connected` while `WaitForMcpServers` reports no such server configured and none of the
+four mandatory tools are callable. Raised upstream as
+[LXAgents-MCP/shared-instruction#92](https://github.com/LXAgents-MCP/shared-instruction/pull/92),
+which adds the rule for this state and corrects `auto-activation`'s promise of an
+`agents://` fallback the server does not serve.
+
+Until it is resolved, **read the conventions from a clone outside the repository** — this
+one was worked from `/tmp/shared-instruction`, never copied in. Do not reconstruct them
+from memory, and do not vendor them: `AGENTS.md` forbids both, and the discovery protocol
+forbids the first for a specific reason, which is that it is how a whole planning phase
+gets quietly invented.
+
 ## What exists
 
 * `LICENSE` — MIT, © 2026 LXBrowser (pre-existing).
