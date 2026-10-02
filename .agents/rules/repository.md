@@ -29,11 +29,15 @@ empty, so the shared set is used unchanged.
 
 ## What may not be introduced
 
-* **A build step or bundler.** The repository has no `package.json` and no `node_modules`.
-  Modules load natively; adding a build invalidates "load unpacked" as the only install
-  path.
+* **A build step or bundler in the shipped tree.** Modules load natively; adding a build
+  invalidates "load unpacked" as the only install path. What ships is `manifest.json`,
+  `src/`, and `src/ui/icons/` — nothing else, and nothing in it is produced by a command.
+  A `package.json` confined to `tests/` is not a build step; see **Testing** below.
 * **A framework or runtime dependency** — React, Vue, a CSS toolkit, a component library.
-  The extension is dependency-free by design; see `.agents/design/principles.md`.
+  The extension is dependency-free by design; see `.agents/design/principles.md`. This
+  binds the shipped tree: Playwright is a development dependency of the harness, never a
+  dependency of the extension, and `manifest.json` names no dependency because there is
+  none to name.
 * **A third documentation tree.** `wiki/` and `.agents/wiki/` are the only two. `docs/`,
   `documentation/`, and a second human wiki are all forbidden.
 * **`INDEX.md`, anywhere.** Every index is a file in `.agents/index/`, never one placed
@@ -48,6 +52,7 @@ empty, so the shared set is used unchanged.
 | Manifest | `manifest.json` — repository root, because Chrome loads it from there |
 | Extension source | `src/` |
 | Extension UI | `src/ui/` — `index.html` plus `css/` |
+| Browser tests | `tests/e2e/` — the harness, its scripts, and the one `package.json` they need |
 | Design system | `.agents/design/`, routed by `.agents/index/design-index.md` |
 | Working plans | `.agents/plans/` — **untracked**, excluded by `.gitignore` |
 
@@ -76,6 +81,34 @@ empty, so the shared set is used unchanged.
   This is a guard, not a sandbox. It does not replace treating fetched content as data in
   the system prompt, and no guard here makes fetching model-supplied URLs safe — it makes
   them bounded.
+
+## Testing
+
+**There is a browser harness, and it lives in `tests/e2e/`.** It loads the unpacked
+extension into a real Chromium and drives it. It exists because the static suite cannot
+execute `app.js`, and that gap was not theoretical: a fully written and entirely
+unreachable `boot()` passed every static check twice, a manifest with no `permissions` key
+passed them again, and a helper that threw on its first element passed them a third time.
+Each presented as unrelated dead controls in the browser and was invisible to 122 checks.
+
+* **The extension root contains only what ships.** `package.json` and `node_modules/` live
+  under `tests/e2e/`, never at the repository root, so the directory Chrome loads unpacked
+  is byte-for-byte the shipped tree. `node_modules/` is gitignored.
+* **`channel: 'chromium'`, not the default.** Playwright's default binary is
+  `chrome-headless-shell`, which cannot load an extension at all. The wrong binary fails
+  in a way that reads like a broken extension.
+* **Stub OpenRouter with `context.route`, never by patching `fetch` in the worker.** A
+  worker-side patch dies the moment Chrome recycles the worker, and a worker being
+  recycled is what most of this suite is about. Routing is set on the browser context and
+  survives it. `probe-route.mjs` pins that distinction.
+* **Every check must be shown able to fail.** A suite that has only ever passed is not
+  evidence. Run the new checks against a worktree of the pre-fix tree and confirm each one
+  fails with its expected signature before the fix is called verified.
+* **No billable call.** The harness seeds a placeholder key so `boot()` clears the gate.
+  Every OpenRouter response is a scripted SSE body. Nothing here has ever spoken to
+  OpenRouter, and a test that would is not a test to write.
+* `node --check` and the structural checks in `static.mjs` remain worth running: they are
+  fast, they fail without a browser, and `npm test` runs them first.
 
 ## Conventions the code follows
 
