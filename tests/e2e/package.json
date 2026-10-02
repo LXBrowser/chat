@@ -1,0 +1,17 @@
+{
+  "name": "chat-e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser harness for the chat extension. Development only — nothing here ships, and the extension loads unpacked with no build step.",
+  "scripts": {
+    "smoke": "node smoke.mjs",
+    "static": "node static.mjs",
+    "verify": "node verify.mjs",
+    "verify:ping": "node verify-ping.mjs",
+    "test": "npm run static && npm run smoke && npm run verify && npm run verify:ping"
+  },
+  "devDependencies": {
+    "playwright": "^1.63.0"
+  }
+}

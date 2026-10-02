@@ -1,3 +1,9 @@
 # Agents
 
 .agents/plans/
+
+# Browser harness dependencies. Playwright lives under tests/e2e/ rather than at the
+# root so the extension tree stays exactly what ships — but the rule is unanchored, so
+# it matches node_modules at any depth.
+
+node_modules/

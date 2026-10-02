@@ -40,9 +40,10 @@ here, and the override table in the root index is empty.
 
 ## Stack
 
-Vanilla HTML, CSS, and ES6+ modules. No package manager, no build step, no dependencies.
+Vanilla HTML, CSS, and ES6+ modules. No build step and no dependencies in the shipped tree.
 Chrome Manifest V3, full-page new-tab override. IndexedDB for storage. OpenRouter for
-models.
+models. The one package manager is the browser harness: `tests/e2e/package.json` carries
+Playwright as a dev dependency, and nothing under `src/` depends on it.
 
 ## What is not built
 
@@ -178,9 +179,10 @@ The procedure is in `wiki/environments/setup.md`. Its step 1 has been driven; st
 need a real key and have never been run by anyone, so expect to find things that are not
 in the list.
 
-The test scripts live in `/tmp` and are **not committed** — the repository states it has no
-test runner, and adding one was out of scope. They are the obvious first candidate if that
-changes.
+The test scripts live in `tests/e2e/` and are **committed** as of the branch that moved them
+there. They used to sit in `/tmp`, untracked, because `.agents/rules/repository.md` then
+forbade a `package.json` anywhere in the repository — a rule now scoped to the shipped
+tree, since Playwright is a dependency of the harness and not of the extension.
 
 **Since the sixth run there is a browser harness that can execute the extension**, which
 the static suite never could. Playwright loads the unpacked extension into a real Chromium
@@ -188,8 +190,9 @@ with the full build rather than `chrome-headless-shell` — the shell cannot loa
 extension at all. OpenRouter is stubbed with `context.route` at the browser-context level,
 **not** by patching `fetch` inside the worker: a worker-side patch dies the moment Chrome
 recycles the worker, and every test in that suite is about a worker that gets recycled.
-The scripts stay in `/tmp` because `.agents/rules/repository.md` forbids a `package.json`
-and `node_modules` in this repository, and installing them at the root would breach it.
+It lives at `tests/e2e/`, with its `package.json` and `node_modules` kept inside that
+directory rather than at the repository root, so the tree Chrome loads unpacked is still
+exactly what ships. Run `npm test` there.
 
 ## Known open items
 
