@@ -30,6 +30,67 @@ export const OPENROUTER = 'https://openrouter.ai/**';
 let context = null;
 let profileDir = null;
 
+/**
+ * Resolves once the worker has the extension APIs a test needs, and returns it.
+ *
+ * Chrome announces a service worker before it has injected `chrome.runtime` and
+ * `chrome.storage` into it. A worker evaluated in that window sees a `chrome` object
+ * holding only `loadTimes` and `csi`, so `chrome.storage.local` throws a TypeError that
+ * reads exactly like a manifest with no `storage` permission. Waiting for the APIs makes
+ * the two distinguishable: a worker that really lacks them times out with a message that
+ * says so, instead of failing on whichever line happened to run first.
+ */
+export async function ready(worker, timeoutMs = 10000) {
+  const deadline = Date.now() + timeoutMs;
+
+  for (;;) {
+    const up = await worker
+      .evaluate(() => Boolean(globalThis.chrome?.runtime?.id && chrome.storage?.local))
+      .catch(() => false);
+    if (up) return worker;
+
+    if (Date.now() > deadline) {
+      throw new Error(
+        'The extension worker never exposed chrome.storage. Is the extension loaded, and ' +
+          'does the manifest declare the "storage" permission?',
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
+/**
+ * The extension's current service worker, once it is ready.
+ *
+ * `context.serviceWorkers()[0]` is the wrong handle after a worker has been stopped: the
+ * old entry can linger and fail on its first evaluation, with the new one not yet
+ * registered. This tries every known worker, and when none answers waits for the next to
+ * be announced.
+ */
+export async function awaitWorker(context, timeoutMs = 15000) {
+  const deadline = Date.now() + timeoutMs;
+
+  for (;;) {
+    for (const candidate of context.serviceWorkers()) {
+      try {
+        return await ready(candidate, 1500);
+      } catch {
+        // A stopped worker, or one that is not up yet. Try the next, then wait.
+      }
+    }
+
+    const left = deadline - Date.now();
+    if (left <= 0) {
+      throw new Error(
+        'No live extension worker appeared. If the worker was stopped and restarted, ' +
+          'Playwright may not have reported the new one — observed on 1.56.1, where ' +
+          'context.serviceWorkers() kept the dead handle and no "serviceworker" event fired.',
+      );
+    }
+    await context.waitForEvent('serviceworker', { timeout: Math.min(left, 1500) }).catch(() => {});
+  }
+}
+
 export async function launch() {
   profileDir = mkdtempSync(join(tmpdir(), 'chat-profile-'));
 
@@ -47,6 +108,7 @@ export async function launch() {
 
   let worker = context.serviceWorkers()[0];
   if (!worker) worker = await context.waitForEvent('serviceworker', { timeout: 15000 });
+  await ready(worker);
 
   return { context, worker, extensionId: new URL(worker.url()).host };
 }
