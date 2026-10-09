@@ -66,7 +66,7 @@ otherwise the dropdown, otherwise `openai/gpt-4o-mini`.
 | Preset | Note |
 |---|---|
 | `openai/gpt-4o-mini` | The default. Cheap and fast, which matters while the extension is being developed against a live bill. |
-| `deepseek/deepseek-v4-flash` | **Unverified.** The id is used exactly as given and has not been confirmed against OpenRouter's catalogue. If it is wrong, the request fails at send time with the provider's error, not silently. |
+| `deepseek/deepseek-v4-flash` | Listed in OpenRouter's public catalogue (`https://openrouter.ai/api/v1/models`) on 2026-10-09. That checks the id and nothing more: it has not been sent a request with a real key. If the id is ever retired, the request fails at send time with the provider's error, not silently. |
 
 The custom field exists precisely so a wrong or unavailable preset is not a dead end — type
 any OpenRouter `{platform}/{model}` id and it is sent instead.

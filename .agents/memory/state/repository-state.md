@@ -153,8 +153,9 @@ pull the credential in even by accident.
   `cloudflare-dns.com` stops `read_page` working rather than letting it read unchecked.
 * **The search parser is the fragile part.** It reads DuckDuckGo's keyless HTML with no API
   contract behind it. If search starts returning nothing, that is where to look.
-* **`deepseek/deepseek-v4-flash` is unverified** — used exactly as the owner gave it, and
-  not confirmed against OpenRouter's catalogue. A bad id fails loudly at request time.
+* **`deepseek/deepseek-v4-flash` is in OpenRouter's public catalogue** (checked 2026-10-09),
+  which confirms the id and nothing else — no request has used it with a real key. A bad id
+  fails loudly at request time.
 
 ## What has not been verified
 
@@ -227,10 +228,10 @@ manifest from the code side. The permission sweep closes the specific case, and
 `TypeError` — but a *new* API used with no permission would still be caught first by
 Chrome, not by anything here.
 
-**`deepseek/deepseek-v4-flash` is unverified.** It is in the model picker exactly as the
-owner wrote it and has not been checked against OpenRouter's catalogue. If the id is wrong,
-the failure is loud and specific — the picker still offers the default and a custom field,
-so nothing is a dead end.
+**`deepseek/deepseek-v4-flash` has not been used with a real key.** It is in the model picker
+exactly as the owner wrote it and appears in OpenRouter's public catalogue as of 2026-10-09.
+If the id is ever retired, the failure is loud and specific — the picker still offers the
+default and a custom field, so nothing is a dead end.
 
 Minor divergence from the shared convention: `plan_creator` specifies `/.agents/plans/`
 with a leading slash; the `.gitignore` uses `.agents/plans/`. Functionally equivalent here,

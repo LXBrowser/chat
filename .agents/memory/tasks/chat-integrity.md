@@ -61,6 +61,29 @@ ordinary web. Done when:
 
 ## 2026-10-09
 
+### Task 9 — docs/stale-claims
+
+Claims that were already false before any change in this record, found while reading the
+repository. Nothing here is invalidated by a fix; those corrections rode with their own
+tasks.
+
+* **`README.md`** described an interface that no longer exists: "the synthesized response",
+  "live agent status and logs", agents that "leave the status dropdown", and an `AGENTS.md`
+  that "becomes the agents' system prompt". It also called 0.1.0 "a shell". It now says what
+  the code does — the three panes as they are laid out, sub-agents that each make their own
+  call with answers that are not merged or shown, one status line with a running count, and
+  a system prompt that is `src/prompts/system-instructions.md`, seeded into IndexedDB on first
+  run (`AGENTS.md` is not packaged and cannot be read at runtime). It points to the Overview
+  for what has and has not been verified, and stays an overview.
+* **`deepseek/deepseek-v4-flash` was described as unverified** in `wiki/environments/env.md`
+  and twice in `.agents/memory/state/repository-state.md`. OpenRouter's public model listing
+  was fetched on 2026-10-09 (458 models) and contains it, and `openai/gpt-4o-mini`. The pages
+  now say that, and that it confirms the id and nothing more: neither has been used with a
+  real key.
+
+Left for the release task, because it is the one document allowed to lag: the same deepseek
+note and the "readable `Location`" sentences in `wiki/logs/0/1/0/CHANGELOG.md`.
+
 ### Task 8 — fix/dropzone-label
 
 The dropzone lists a dropped or chosen file and does nothing else: the file's contents are
