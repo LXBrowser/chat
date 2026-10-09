@@ -233,9 +233,9 @@ async function read_page({ url, max_chars } = {}) {
 
   const limit = clamp(Number.parseInt(max_chars, 10) || 8000, 500, 20000);
 
-  // Every hop is checked, not just the URL that was handed over. Letting fetch follow
-  // redirects itself would mean a public page could bounce the request to a private one
-  // after the guard has already run and said yes.
+  // The URL that was handed over is checked before the request, and where the request ended
+  // up is checked after any redirects. See `fetchChecked` for what that does and does not
+  // cover.
   const { response, url: finalUrl } = await fetchChecked(target);
 
   if (!response.ok) {
@@ -264,9 +264,6 @@ async function read_page({ url, max_chars } = {}) {
 /** 5 MB. Past this a page is not something to read, it is something to skip. */
 const MAX_DOWNLOAD_BYTES = 5 * 1024 * 1024;
 
-/** How many redirects to follow. Each one costs a full DNS check, so few. */
-const MAX_REDIRECTS = 3;
-
 /**
  * Resolver used only to answer "where does this name point".
  *
@@ -285,30 +282,69 @@ const DNS_TIMEOUT_MS = 5_000;
 // ---------------------------------------------------------------------------
 
 /**
- * Fetches a page, refusing at every hop to touch an address that is not publicly routable.
+ * Fetches a page, refusing to read one that is not at a publicly routable address.
+ *
+ * Two checks, in two places, because a browser gives no way to make it one:
+ *
+ *   - **Before the request**, the URL that was handed over: https only, and a hostname that
+ *     resolves to a public address. Nothing is sent to a private host the model named.
+ *   - **After the request**, where it landed. Redirects are followed by the browser, and
+ *     the landing URL gets the same two tests. A refused landing is cancelled before its
+ *     body is read, and nothing from it reaches the model.
+ *
+ * **What this does not do, and why.** The guard used to fetch with `redirect: 'manual'` and
+ * check every hop first. That cannot work here: a manual redirect comes back as an opaque
+ * response with status 0 and no readable `Location`, so every redirect — `www`, a trailing
+ * slash, a link shortener — failed as "returned 0". The cost of following instead is that a
+ * public page which redirects to a private address still causes **one request to that
+ * address** before it is refused. It is a GET with no cookies (`credentials: 'omit'`), and
+ * nothing it returns is read or passed on, but it is sent. Chrome stops a redirect chain
+ * itself, so there is no hop counter here.
  *
  * @returns {Promise<{response: Response, url: URL}>} the final response and the URL that
  * produced it, so an error names the host that actually answered.
  */
 async function fetchChecked(rawUrl) {
-  let target = parseTarget(rawUrl);
+  const target = parseTarget(rawUrl);
+  await assertPublicHost(target);
 
-  for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
-    await assertPublicHost(target);
+  const response = await fetch(target.href, {
+    headers: { 'Accept': 'text/html,text/plain;q=0.9' },
+    redirect: 'follow',
+    // No cookies for a host the model picked. The default would send them.
+    credentials: 'omit',
+  });
 
-    const response = await fetch(target.href, {
-      headers: { 'Accept': 'text/html,text/plain;q=0.9' },
-      // Manual, so the next hop goes back through the guard rather than around it.
-      redirect: 'manual',
-    });
+  if (!response.redirected) return { response, url: target };
 
-    const location = redirectTarget(response);
-    if (!location) return { response, url: target };
+  return { response, url: await checkLanding(target, response) };
+}
 
-    target = parseTarget(new URL(location, target.href).href);
+/**
+ * Applies the pre-request tests to where a redirected request ended up.
+ *
+ * @returns {Promise<URL>} the landing URL, once it has passed.
+ * @throws {Error} naming both hosts, with the response's body left unread.
+ */
+async function checkLanding(origin, response) {
+  try {
+    const landed = parseTarget(response.url);
+    await assertPublicHost(landed);
+    return landed;
+  } catch (err) {
+    // The headers have arrived and the body has not been touched. It never will be.
+    await response.body?.cancel().catch(() => {});
+
+    let landedHost = response.url;
+    try {
+      landedHost = new URL(response.url).hostname;
+    } catch {
+      // Keep the raw text; an unparseable landing is itself the reason it was refused.
+    }
+    throw new Error(
+      `${origin.hostname} redirected to ${landedHost}, which was not read. ${err.message}`,
+    );
   }
-
-  throw new Error(`Gave up after ${MAX_REDIRECTS} redirects.`);
 }
 
 /** Parses and scheme-checks a URL. https only, whatever the model asked for. */
@@ -328,18 +364,6 @@ function parseTarget(raw) {
   }
 
   return parsed;
-}
-
-/**
- * Where a 3xx points, or null if this is not a redirect.
- *
- * A redirect with no readable `Location` is treated as final rather than followed, which
- * fails closed: if the browser ever hands back an opaque redirect here, the loop stops
- * instead of continuing against an unchecked target.
- */
-function redirectTarget(response) {
-  if (response.status < 300 || response.status > 399) return null;
-  return response.headers.get('location');
 }
 
 /**

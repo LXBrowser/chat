@@ -125,7 +125,7 @@ front of the model, including one crafted to look like an internal host. Chrome 
 about this at install time. It is granted deliberately, because `read_page` is useless
 without it, but the safeguards live in the tool rather than in the permission.
 
-Before every hop — **including every redirect hop** — `read_page`:
+`read_page` checks the URL it is given **before the request is sent**:
 
 * accepts **https only**;
 * **resolves the hostname and checks the addresses**, refusing anything that is not
@@ -138,6 +138,21 @@ Before every hop — **including every redirect hop** — `read_page`:
   host it could not check;
 * bounds the download at 5 MB by content-length, before the body is read;
 * refuses a content type with no readable text.
+
+If the request was **redirected**, the first four checks run again on **where it landed**
+before any of the page is read. A refused landing is cancelled with its body unread, and the
+model is told which host redirected where and why it was refused. The size and content-type
+limits apply to the final page.
+
+**A redirect costs one request that cannot be prevented.** A browser does not tell an
+extension where a redirect is going until it has followed it, so the landing can only be
+checked after the request is sent. A public page that redirects to a private address, or to
+plain `http`, therefore causes one GET to it — with no cookies — before it is refused;
+nothing it returns is read or passed on. Measured, not assumed: the browser tests in
+`tests/e2e/verify-worker.mjs` count exactly one request to each refused landing (2026-10-09).
+The guard used to fetch with `redirect: 'manual'` and check every hop first, but Chrome
+returns a manual redirect as an opaque response with status 0 and no readable `Location`, so
+every redirect failed as `returned 0`.
 
 Resolution goes through DNS-over-HTTPS rather than a plain lookup, because the guard trusts
 the answer and a plain lookup can be forged by whatever is on the path. The trade is that
