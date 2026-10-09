@@ -1,7 +1,7 @@
 ---
 name: memory-tasks-chat-integrity
 description: Record of the integrity fixes found by reading the whole repository and running it — chats that cannot be deleted, answers filed in the wrong chat, read_page failing on redirects, stream parsing, and the harness startup race.
-status: in-progress
+status: done
 ---
 
 # Chat integrity and redirects
@@ -48,16 +48,16 @@ ordinary web. Done when:
 
 | # | Title | Branch | PR |
 |---|---|---|---|
-| 1 | The task record | `chore/chat-integrity-plan` | |
-| 2 | Harness startup | `test/e2e-harness-startup` | |
-| 3 | Delete a chat | `fix/chat-delete` | |
-| 4 | Chat routing | `fix/chat-routing` | |
-| 5 | Redirects in read_page | `fix/read-page-redirects` | |
-| 6 | Stream parsing | `fix/stream-parsing` | |
-| 7 | Key modal Enter | `fix/key-modal-enter` | |
-| 8 | Dropzone label | `fix/dropzone-label` | |
-| 9 | Claims already stale | `docs/stale-claims` | |
-| 10 | The release | `release/0.1.0` | |
+| 1 | The task record | `chore/chat-integrity-plan` | #30 |
+| 2 | Harness startup | `test/e2e-harness-startup` | #31 |
+| 3 | Delete a chat | `fix/chat-delete` | #32 |
+| 4 | Chat routing | `fix/chat-routing` | #33 |
+| 5 | Redirects in read_page | `fix/read-page-redirects` | #34 |
+| 6 | Stream parsing | `fix/stream-parsing` | #35 |
+| 7 | Key modal Enter | `fix/key-modal-enter` | #36 |
+| 8 | Dropzone label | `fix/dropzone-label` | #37 |
+| 9 | Claims already stale | `docs/stale-claims` | #38 |
+| 10 | The release | `release/0.1.0` | #39 |
 
 ## 2026-10-09
 
@@ -83,12 +83,12 @@ unverified, in two places, which is now observed and false; the model-id note; a
 adjacent sentence saying the harness and its checks were not committed, which stopped being
 true when they moved under `tests/e2e/`.
 
-**Left open on purpose.** This task is meant to fill the `PR` column above and mark the record
-`done`. No pull request exists yet — the owner has not been asked, and the plan requires a
-separate yes before one is opened — so there is no number to write. The column is empty and the
-status stays `in-progress`. Once the pull requests are opened, one follow-up commit on this
-branch fills the column and sets `status: done`; nothing is stacked above this branch, so it
-rebases nothing.
+**Closed once the pull requests existed.** This task is meant to fill the `PR` column above and
+mark the record `done`. At the time of the release commit no pull request had been opened — the
+owner had not yet been asked, and the plan requires a separate yes — so the column was empty
+and the status `in-progress`. The owner then approved opening and merging them; they were
+opened as #30 to #39, one per branch, and a follow-up commit on this branch filled the column
+and set `status: done`. Nothing is stacked above this branch, so it rebased nothing.
 
 ### Task 9 — docs/stale-claims
 
