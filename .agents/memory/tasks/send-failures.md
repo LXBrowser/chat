@@ -71,6 +71,24 @@ the tree before its fix and passes after.
 
 ## 2026-10-09
 
+### Task 5 — release/0.1.0
+
+The version stays `0.1.0`: the repository has no release and no tag, so its changelog may be
+amended in place, and a bump is the owner's. No tag and no version directory were created. The
+branch reuses the name `release/0.1.0` from the previous round's release task; that branch was
+merged and is gone from the remote, so nothing is overwritten.
+
+`wiki/logs/0/1/0/CHANGELOG.md` gains three entries under `## Fixed`: the send that ended in an
+error when the model kept asking for tools, the model with no tool support, and the empty answer
+that did not say why. Each says what a reader has to do, which is nothing for the first two. The
+first states plainly that the cropped screenshot never showed its message, so the cause is the
+most probable one and not a confirmed one. The sentence in `Added` that described the loop as
+giving up after six rounds now describes the last request that forbids tools.
+
+**Left open on purpose, as last time:** the `PR` column above and `status: done`. No pull request
+existed when this was written. One follow-up commit on this branch fills them once the pull
+requests are opened; nothing is stacked above it.
+
 ### Task 4 — fix/empty-answer-reason
 
 **This task was added after the plan was written, by the re-probe that followed tasks 2 and 3:**
