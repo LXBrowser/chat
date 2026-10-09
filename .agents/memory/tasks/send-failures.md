@@ -1,7 +1,7 @@
 ---
 name: memory-tasks-send-failures
 description: Record of a reported failed send — the tool-round limit that ended a send in an error instead of an answer, and models with no tool support that could not be used at all.
-status: in-progress
+status: done
 ---
 
 # Send failures: the tool-round limit and models without tools
@@ -63,11 +63,11 @@ the tree before its fix and passes after.
 
 | # | Title | Branch | PR |
 |---|---|---|---|
-| 1 | The task record | `chore/send-failures-plan` | |
-| 2 | The tool-round limit | `fix/tool-round-limit` | |
-| 3 | Models without tools | `fix/tool-less-models` | |
-| 4 | Empty-answer reason | `fix/empty-answer-reason` | |
-| 5 | The release | `release/0.1.0` | |
+| 1 | The task record | `chore/send-failures-plan` | #40 |
+| 2 | The tool-round limit | `fix/tool-round-limit` | #41 |
+| 3 | Models without tools | `fix/tool-less-models` | #42 |
+| 4 | Empty-answer reason | `fix/empty-answer-reason` | #43 |
+| 5 | The release | `release/0.1.0` | #44 |
 
 ## 2026-10-09
 
@@ -85,9 +85,11 @@ first states plainly that the cropped screenshot never showed its message, so th
 most probable one and not a confirmed one. The sentence in `Added` that described the loop as
 giving up after six rounds now describes the last request that forbids tools.
 
-**Left open on purpose, as last time:** the `PR` column above and `status: done`. No pull request
-existed when this was written. One follow-up commit on this branch fills them once the pull
-requests are opened; nothing is stacked above it.
+**Closed in a follow-up commit on this branch**, once the pull requests existed: the `PR` column
+above now holds #40 to #44 and `status` is `done`. The create tool appended a link to the session
+that opened each pull request to every body it posted; each body was read back and rewritten
+without it, as the previous round also had to do. No pull request had been merged when this was
+written, so the merge itself is not recorded here.
 
 ### Task 4 — fix/empty-answer-reason
 
