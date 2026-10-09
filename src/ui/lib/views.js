@@ -72,6 +72,15 @@ function text(str) {
  */
 let stream = null;
 
+/**
+ * The chat the message being written belongs to.
+ *
+ * The streaming node is one element, but the transcript shows one chat at a time. Without
+ * this, a repaint carried the node into whichever chat was open — so an answer begun in
+ * one chat appeared in the next one the person clicked.
+ */
+let streamSession = null;
+
 /** Redraws the history list from the database. */
 export async function renderHistory() {
   const list = $('history');
@@ -114,17 +123,25 @@ export async function renderHistory() {
 /** Redraws the transcript for the open session. */
 export async function renderTranscript() {
   const pane = $('transcript');
-  const messages = await sessions.listMessages();
+
+  // The chat this repaint draws. Fixed before the database is read, so the messages and
+  // the decision about the streaming node below are about the same chat even if the
+  // person clicks elsewhere while this waits — the click queues its own repaint.
+  const viewing = sessions.current();
+  const messages = await sessions.listMessages(viewing);
 
   // A response can be arriving while the transcript is repainted for another reason — a
   // rename, a session switch. The in-flight node is not in the database yet, so it has to
   // be carried across the redraw or the text the user is watching vanishes mid-answer.
   //
+  // Only into the chat it belongs to. In any other chat it stays detached, still collecting
+  // text, and is put back when its own chat is reopened.
+  //
   // Captured before the rebuild, because `render` detaches everything, and re-checked
   // against the current value afterwards: if the answer completed while this repaint was
   // waiting on the database, the stored copy is now in `nodes` and re-appending the
   // streamed one would show the same answer twice.
-  const live = stream;
+  const live = stream && streamSession === viewing ? stream : null;
 
   if (!messages.length) {
     render(
@@ -172,9 +189,8 @@ export async function renderTranscript() {
  * An empty placeholder is appended immediately so the first chunk has somewhere to land;
  * an answer that takes a moment to start would otherwise look like nothing happened.
  */
-export function startStream() {
+export function startStream(sessionId) {
   const pane = $('transcript');
-  $('transcript-empty')?.remove();
 
   const body = el('div', { className: 'msg__body' });
   stream = el(
@@ -183,9 +199,15 @@ export function startStream() {
     el('span', { className: 'msg__role', textContent: 'assistant' }),
     body,
   );
+  streamSession = sessionId;
 
-  pane.append(stream);
-  pane.scrollTop = pane.scrollHeight;
+  // Shown only if the chat that asked is still the one on screen. The send does several
+  // awaits before it gets here, and the person can have moved on in that time.
+  if (sessionId === sessions.current()) {
+    $('transcript-empty')?.remove();
+    pane.append(stream);
+    pane.scrollTop = pane.scrollHeight;
+  }
   setStreaming(true);
 
   return { body };
@@ -195,6 +217,10 @@ export function startStream() {
 export function pushDelta(handle, chunk) {
   if (!handle || !chunk) return;
   handle.body.append(text(chunk));
+
+  // Detached while another chat is open. The text is kept; there is nothing to scroll, and
+  // the pane belongs to a different conversation.
+  if (!handle.body.isConnected) return;
 
   const pane = $('transcript');
   // Only follow the stream if the reader has not scrolled up to read something.
@@ -225,6 +251,7 @@ export function clearStream(handle) {
 export function endStream() {
   const node = stream;
   stream = null;
+  streamSession = null;
   setStreaming(false);
   if (!node) return;
 
@@ -257,6 +284,7 @@ export function endStream() {
  */
 export function discardStream() {
   stream = null;
+  streamSession = null;
   setStreaming(false);
 }
 

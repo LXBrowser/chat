@@ -33,25 +33,30 @@ export function pageToolNames() {
  * @returns {Promise<string>} a result string, because that is what goes back to the model.
  * @throws {Error} which the port client turns into a failed tool result.
  */
-export async function runPageTool(name, args) {
+export async function runPageTool(name, args, context = {}) {
   const tool = PAGE_TOOLS[name];
   if (!tool) throw new Error(`No such page tool: ${name}`);
-  return tool(args ?? {});
+  return tool(args ?? {}, context);
 }
 
 /**
- * Renames the open chat.
+ * Renames the chat the request was made in.
+ *
+ * The chat comes from `context.sessionId`, fixed when the send started, and not from
+ * whichever chat is open when the tool call arrives. The call can arrive seconds into an
+ * answer, and the person may have clicked into another chat by then — renaming "the open
+ * chat" would retitle one they were not asking in.
  *
  * Truncates rather than rejecting an over-long title: the model picked the words, and a
  * slightly shortened title is a better outcome than a tool error it has to recover from.
  */
-async function update_chat_title({ title } = {}) {
+async function update_chat_title({ title } = {}, { sessionId } = {}) {
   const clean = String(title ?? '').replace(/\s+/g, ' ').trim().slice(0, MAX_TITLE);
 
   if (!clean) throw new Error('A title is required.');
-  if (!sessions.current()) throw new Error('No chat is open to rename.');
+  if (!sessionId) throw new Error('No chat is open to rename.');
 
-  const session = await sessions.renameCurrent(clean);
+  const session = await sessions.renameSession(sessionId, clean);
 
   return JSON.stringify({ ok: true, title: session.title });
 }

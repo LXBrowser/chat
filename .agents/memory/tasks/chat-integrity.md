@@ -61,6 +61,41 @@ ordinary web. Done when:
 
 ## 2026-10-09
 
+### Task 4 — fix/chat-routing
+
+A reply takes seconds and the history list stays clickable, but everything the send did when
+it finished used "the open chat" at that moment. Reproduced with a stubbed, delayed
+response: ask in A, click B before the answer arrives, and A kept only the question while B
+received the assistant's answer. The same cause sent `update_chat_title` to the open chat,
+and the streaming bubble was carried into whichever chat was repainted.
+
+`send()` now fixes the chat when Send is pressed and passes that id through the auto-title,
+the stored user turn, the context read, `runMainAgent`, the title tool
+(`runPageTool(name, args, { sessionId })`) and the final write. `sessions.js` gained
+`getSession(id)` and `renameSession(id, title)`; `renameCurrent` delegates. In `views.js` the
+streaming node remembers its chat (`streamSession`): it is attached only to its own chat's
+transcript, stays detached and keeps collecting text elsewhere, and is put back when its
+chat is reopened. A chat deleted mid-answer now ends the send with `This chat was deleted
+before the answer arrived.` before the status row reads "Answer ready", instead of filing
+the answer under whichever chat is open.
+
+Checks are section B of `tests/e2e/verify-ui.mjs`. For this task the tree before the fix is
+the task 3 commit, not `master`: on bare `master` the delete fault from task 3 would have
+overlapped with the routing faults. On that tree 17 of 25 pass and the eight routing checks
+fail (the bubble in the wrong chat, A without its answer, B holding it, the wrong chat
+renamed, the answer filed under another chat, no notice that the chat was deleted); on this
+branch all 25 pass. One check, the bubble returning when its own chat is reopened, passes on
+both trees by design, because before the fix the bubble followed the person everywhere. It
+was shown able to fail by mutation: with the re-attach removed from a scratch copy, it fails
+and the other 24 pass.
+
+Not changed, and noted for whoever reads this next: only one send runs at a time across all
+chats (`busy` is global), so a person who leaves a chat mid-answer cannot send from another
+chat until it finishes. That was already the behaviour and is a separate decision.
+
+Documentation changed in the same commit: `wiki/environments/setup.md` (step 15). `static`,
+`smoke`, `verify-ping` and sections A–E of `verify.mjs` are unchanged.
+
 ### Task 3 — fix/chat-delete
 
 `deleteSession` in `src/db.js` took its message keys from the `session_id` index and then
