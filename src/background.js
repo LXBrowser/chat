@@ -45,11 +45,17 @@ const DONE = '[DONE]';
  * Not a safety limit so much as a loop limit: a model that keeps re-searching the same
  * query would otherwise run until Chrome's five-minute cap killed it, with no explanation.
  *
- * The loop below runs `round = 0 … MAX_TOOL_ROUNDS` and raises its failure *at* the last
- * round, so the model gets exactly this many tool rounds and then one final chance to
- * answer with what it already has. That final chance is why the bound is inclusive: a
- * model that used its last tool call and could have answered from it should be allowed
- * to. The message names this number, so the two cannot drift apart again.
+ * The loop below runs `round = 0 … MAX_TOOL_ROUNDS`. Rounds before the last may call tools;
+ * the last request is sent with `tool_choice: "none"`, so the model gets exactly this many
+ * tool rounds and then one request in which it is told it may not use any and has to answer
+ * with what it already has. That last request is why the bound is inclusive.
+ *
+ * It used to be only a hope. The last request still offered the tools and said nothing, so a
+ * model that kept searching — easily done, when the search backend is failing and the system
+ * prompt says to search before answering — made seven requests and ended in an error with
+ * nothing to show for them. Now the limit costs the model its tools, not the person their
+ * answer. The error below remains for a model that ignores `tool_choice`, and names what it
+ * called.
  */
 const MAX_TOOL_ROUNDS = 6;
 
@@ -192,12 +198,20 @@ async function handle(port, message) {
 async function converse(spec, onDelta, askPage) {
   const conversation = spec.conversation;
 
+  /** What the model has called so far, by name — for the error if it never stops. */
+  const called = new Map();
+
   for (let round = 0; round <= MAX_TOOL_ROUNDS; round += 1) {
+    // The last request the loop allows. Tools stay declared — a conversation that already holds
+    // tool calls needs them declared on some providers — but the model may not use them.
+    const lastChance = round === MAX_TOOL_ROUNDS && Boolean(spec.tools?.length);
+
     const { content, toolCalls } = await streamChat(
       {
         model: spec.model,
         messages: conversation,
         tools: spec.tools,
+        toolChoice: lastChance ? 'none' : undefined,
         signal: spec.signal,
       },
       onDelta,
@@ -206,7 +220,11 @@ async function converse(spec, onDelta, askPage) {
     if (!toolCalls.length) return content;
 
     if (round === MAX_TOOL_ROUNDS) {
-      throw new Error(`Stopped after ${MAX_TOOL_ROUNDS} rounds of tool calls without an answer.`);
+      const summary = [...called].map(([name, n]) => (n > 1 ? `${name} ×${n}` : name)).join(', ');
+      throw new Error(
+        `Stopped after ${MAX_TOOL_ROUNDS} rounds of tool calls without an answer` +
+          `${summary ? ` (${summary})` : ''}.`,
+      );
     }
 
     // The assistant turn is echoed back verbatim, tool_calls included, or the API
@@ -218,6 +236,8 @@ async function converse(spec, onDelta, askPage) {
     });
 
     for (const call of toolCalls) {
+      called.set(call.function.name, (called.get(call.function.name) ?? 0) + 1);
+
       const result = spec.pageTools.has(call.function.name)
         ? await askPageSafely(askPage, call)
         : await runNetworkToolSafely(call);
@@ -321,7 +341,7 @@ async function readApiKey() {
  * calls the model asked for. Both can be present in one round, though in practice a
  * stream is either prose or tool arguments.
  */
-async function streamChat({ model, messages, tools, signal }, onDelta) {
+async function streamChat({ model, messages, tools, toolChoice, signal }, onDelta) {
   const key = await readApiKey();
   if (!key) {
     throw new Error('No OpenRouter key is stored. Open Settings and add one.');
@@ -340,8 +360,12 @@ async function streamChat({ model, messages, tools, signal }, onDelta) {
       stream: true,
       messages,
       // Omitted rather than sent as null/empty: several providers reject a request that
-      // declares tools and also pins tool_choice.
+      // declares tools and also pins tool_choice. The one place it is pinned is the loop's last
+      // request, as "none", which asks only that the model stop calling tools — a model or
+      // provider that does not honour it is no worse off than before, and the loop's error
+      // still catches it.
       ...(tools?.length ? { tools } : {}),
+      ...(tools?.length && toolChoice ? { tool_choice: toolChoice } : {}),
     }),
   });
 

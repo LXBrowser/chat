@@ -184,6 +184,11 @@ never been run by anyone. Expect to find things that are not in here.
     elsewhere — an apex domain that forwards to its `www.` form is the usual one. The answer
     should come from the page it lands on. An answer saying a page "returned 0" means the
     redirect was not followed, which is the fault this step exists to catch.
+17. **Make search fail.** In DevTools open **Network → Request blocking** and block
+    `*duckduckgo.com*`, then ask for something current — "what is the latest version of X".
+    The model should try a search or two, then say plainly that it could not search and answer
+    from what it knows. It must not end in `Send failed`: the sixth tool round is followed by a
+    request that forbids tools, so the loop ends in an answer. Unblock afterwards.
 
 ### If a send fails
 
@@ -198,7 +203,7 @@ The reason appears under the Send button, and the status line above the conversa
 | `No OpenRouter key is stored` | Should be impossible — the modal blocks first. Reopen Settings and save the key again. |
 | `The background worker went away` | The service worker was terminated mid-request. Send again. |
 | `The provider stopped the answer: <reason>` | OpenRouter accepted the request and the model's provider failed part-way through. The reason is the provider's own words. Whatever text had arrived stays on screen but is **not** saved as an answer. Send again, or pick another model. |
-| `Stopped after 6 rounds of tool calls without an answer` | The model kept asking for tools instead of answering. Rephrase, or drop the custom model box for a known preset. |
+| `Stopped after 6 rounds of tool calls without an answer (search_web ×6)` | The model kept asking for tools even after the request that told it not to use any (`tool_choice: "none"`). A model that obeys answers instead, so this is rare and names what it called. Rephrase, or drop the custom model box for a known preset. |
 | `search_web failed: No results for "…"` | DuckDuckGo rate-limited, or its page structure changed. The latter is `parseSearchResults` in `src/tools.js`. |
 | `Only https URLs can be read` | A tool was pointed at a local file or a plain-http link. Expected — the model has to follow a search result instead. |
 | `Could not check where <host> points` | The DNS-over-HTTPS lookup failed or returned nothing, so the page was not read. The guard fails closed on purpose; retry, and check for a network that blocks `cloudflare-dns.com`. |
