@@ -337,6 +337,86 @@ const unexpectedC = errors.filter((e) => !e.includes('Send failed'));
 t.ok('no page error besides the deliberate failed send', unexpectedC.length === 0, unexpectedC.join(' | ') || 'none');
 
 // ===========================================================================
+// D. A model that cannot use tools
+// ===========================================================================
+//
+// OpenRouter refuses any request that carries `tools` to a model with no tool support — a
+// 404 before anything is generated, so nothing is billed. The extension always declares tools,
+// so every send to such a model used to fail with the provider's text. The custom model field
+// exists to type exactly this kind of id, and 68 of the 458 models in the catalogue on
+// 2026-10-09 list no `tools` among their supported parameters.
+
+console.log('\n--- D. a model that cannot use tools ---');
+
+const refuseTools = {
+  status: 404,
+  json: {
+    error: {
+      message: 'No endpoints found that support tool use. To learn more about provider routing, visit: https://openrouter.ai/docs/provider-routing',
+      code: 404,
+    },
+  },
+};
+
+/** Records every state the status row passes through during one send. */
+async function watchStatusRow() {
+  await page.evaluate(() => {
+    window.__rows = [];
+    const row = document.getElementById('activity-text');
+    window.__rowObserver?.disconnect();
+    window.__rowObserver = new MutationObserver(() => window.__rows.push(row.textContent));
+    window.__rowObserver.observe(row, { childList: true, characterData: true, subtree: true });
+  });
+}
+const rowStates = () => page.evaluate(() => [...new Set(window.__rows)]);
+
+// --- D1. The model refuses tools, then answers without them -------------------
+
+const chatNoTools = await newChat();
+let refusing = await stubRounds((request) =>
+  request.tools ? refuseTools : { body: say('Answered without tools.') + DONE });
+await watchStatusRow();
+await send('hello, no tools please');
+
+t.ok('the send succeeds', (await statusNow()) === '', `status: "${await statusNow()}"`);
+t.ok('...with the answer from the tool-less request',
+  (await assistantTurns(chatNoTools)).join('|') === 'Answered without tools.', JSON.stringify(await assistantTurns(chatNoTools)));
+t.ok('two requests: one with tools, refused, then the same without them',
+  refusing.requests.length === 2 && Boolean(refusing.requests[0]?.tools) && !('tools' in (refusing.requests[1] ?? {})),
+  `${refusing.requests.length} requests; tools sent: ${JSON.stringify(refusing.requests.map((r) => Boolean(r?.tools)))}`);
+t.ok('the retry carries no tool_choice either', refusing.requests[1] && !('tool_choice' in refusing.requests[1]));
+
+const states = await rowStates();
+t.ok('the status row said the model has no tool support', states.some((s) => /no tool support/i.test(s)),
+  JSON.stringify(states));
+
+const first = refusing.requests[0]?.messages?.[0];
+const second = refusing.requests[1]?.messages?.[0];
+t.ok('the retry tells the model it cannot call tools; the first request did not',
+  second?.role === 'system' && /cannot call tools/i.test(second.content) && !/cannot call tools/i.test(first?.content ?? ''),
+  JSON.stringify(second?.content?.slice(-120)));
+
+// --- D2. Errors that are not about tools are left alone ------------------------
+
+const refusals = [
+  ['a 404 about a missing model', { status: 404, json: { error: { message: 'No endpoints found for acme/ghost-model.', code: 404 } } }, /No endpoints found for acme\/ghost-model/],
+  ['a 401', { status: 401, json: { error: { message: 'No auth credentials found', code: 401 } } }, /401/],
+  ['a 400 about a tool schema', { status: 400, json: { error: { message: "Invalid schema for function 'search_web': 'minimum' is not permitted.", code: 400 } } }, /Invalid schema/],
+];
+for (const [label, entry, shown] of refusals) {
+  const chatOther = await newChat();
+  refusing = await stubRounds(() => entry);
+  await send('this should not be retried');
+  const shownStatus = await statusNow();
+  t.ok(`${label} is shown and not retried (control)`,
+    refusing.requests.length === 1 && shown.test(shownStatus) && (await assistantTurns(chatOther)).length === 0,
+    `${refusing.requests.length} request(s); status: "${shownStatus}"`);
+}
+
+const unexpectedD = errors.filter((e) => !e.includes('Send failed'));
+t.ok('no page error besides the deliberate failed sends', unexpectedD.length === 0, unexpectedD.join(' | ') || 'none');
+
+// ===========================================================================
 await context.unroute(OPENROUTER);
 
 const allPassed = t.report();

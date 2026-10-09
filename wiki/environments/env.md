@@ -71,6 +71,16 @@ otherwise the dropdown, otherwise `openai/gpt-4o-mini`.
 The custom field exists precisely so a wrong or unavailable preset is not a dead end — type
 any OpenRouter `{platform}/{model}` id and it is sent instead.
 
+**Not every model can use tools.** The extension declares `search_web`, `read_page` and
+`update_chat_title` on every send, and OpenRouter refuses such a request to a model that has no
+tool support, with a 404 before anything is generated. When that happens on the first request,
+the same request is sent again without tools, the status row says `no tool support — answering
+without search`, and the model is told it cannot search. The refused request was not billed.
+Both presets support tools; roughly one model in seven in the catalogue does not (68 of 458 on
+2026-10-09, counted from the `tools` entry in each model's `supported_parameters` at
+`https://openrouter.ai/api/v1/models`). Only the first request is retried, and only for an error
+that names missing tool support: a bad key, a missing model or a schema error is shown as it is.
+
 There is no settings surface for choosing the Main Agent and sub-agents *separately*: both
 use the selected model.
 
