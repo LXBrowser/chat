@@ -147,8 +147,9 @@ arrives here is a genuine request or transport failure.
 ### Tool calling
 
 * **The tool loop lives in the service worker**, not the page. A tool round needs a second
-  request, and holding the loop in one place is what bounds it — six rounds, then it gives
-  up with an explanation rather than hanging until Chrome's five-minute cap kills it.
+  request, and holding the loop in one place is what bounds it — six rounds of tools, then one
+  last request in which the model may not use any and has to answer (see Fixed), rather than
+  hanging until Chrome's five-minute cap kills it.
 * Streamed `tool_calls` fragments are reassembled by `index`. The id arrives in the first
   fragment and the arguments are split wherever they fall, so nothing can be assigned on
   sight; a name that arrives in two pieces is appended, not overwritten.
@@ -468,6 +469,44 @@ The one place on the page where Cancel wrote a credential. Enter now acts only f
 on a button it is that button's own action. **If you ever typed in the key field, tabbed to
 Cancel and pressed Enter, the typed text became your key — if sends now fail with 401,
 replace the key in Settings.**
+
+### A send could end in an error when the model kept asking for tools
+
+Reported from the extension's Errors page as `Send failed:` logged from `send()`; the message
+itself was cropped out of the screenshot. The loop allows six rounds of tools and then makes one
+more request, described as the model's "final chance to answer" — but that request was identical
+to the others, tools declared and nothing said, so a model that wanted a tool just asked for
+another and the send failed with `Stopped after 6 rounds of tool calls without an answer`. It is
+easy to reach: the system prompt tells the model to search before it answers, and a search that is
+failing (DuckDuckGo answering an extension with a bot challenge) makes it try again. The last
+request is now sent with `tool_choice: "none"`, so a model that obeys answers with what it has; one
+that ignores it still ends in the error, which now names the tools it called. A failed search
+also tells the model to stop searching and say that it could not, in the tool result — the
+bundled system prompt is seeded once and never refreshed, so an edit to it would not reach an
+existing install. `Send failed` now logs the error itself, so its stack reaches the Errors page.
+This reproduced the logged line from a realistic flow, but the cropped message was never seen, so
+it is the most probable cause and not a confirmed one: a 401, 402 or 429 would log the same line.
+**Nothing to do** — send the prompt again.
+
+### A model with no tool support could not be used
+
+The extension declares its tools on every send, and OpenRouter refuses such a request to a model
+that has no tool support (404, "No endpoints found that support tool use") before anything is
+generated. With a custom model id of that kind every send failed with the provider's text. The
+first request is now retried once without tools when the error is a 400, 404 or 422 that names
+missing tool support, the model is told it cannot search, and the status row says
+`no tool support — answering without search` for the rest of the answer. Any other error is shown
+as it was. Both presets support tools; 68 of the 458 models in the catalogue on 2026-10-09 do
+not. **Nothing to do.**
+
+### An empty answer did not say why
+
+`The model returned an empty answer.` was true and explained nothing. A reasoning model — one of
+the two presets is — can spend its whole output budget thinking and stop with no answer, which
+read the same as a model that said nothing. The message now adds how the model stopped and how
+much reasoning arrived, only when known: `(it stopped with "length"; 40 characters of reasoning
+arrived but no answer)`. **If you see that, the model used its output on thinking: send again, ask
+for something shorter, or choose a model that does not reason.**
 
 ## Security
 
