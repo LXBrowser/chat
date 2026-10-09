@@ -70,6 +70,38 @@ the tree before its fix and passes after.
 
 ## 2026-10-09
 
+### Task 2 — fix/tool-round-limit
+
+`converse` in `src/background.js` ran rounds 0 to 6 and threw at round 6 if the model was still
+asking for tools. The `transcript-and-worker-stability` record defended that as correct because
+round 6 is "a final chance to answer with what it already has". The arithmetic was right and the
+claim was not: the request at round 6 was identical to the ones before it, tools declared and
+nothing said, so a model that wanted a tool simply asked for another and the send failed.
+
+The last request is now sent with `tool_choice: "none"` and the tools still declared, because a
+conversation that holds tool calls needs them declared on some providers. If the model ignores
+it the loop still throws, now as `Stopped after 6 rounds of tool calls without an answer
+(search_web ×6).` Every way `search_web` fails now ends with a sentence telling the model to stop
+searching and answer from what it knows. That advice is in the tool result because the system
+prompt is seeded into IndexedDB once and never refreshed, so an edit to the bundled prompt would
+not reach an existing install. `send()` now logs the error object instead of only its message, so
+a fault in the page's own code keeps its stack on the Errors page.
+
+Checks are section C of `tests/e2e/verify-worker.mjs`, against a stub that keeps calling
+`search_web` unless a request pins `tool_choice: "none"`, with the search page answering like a
+bot challenge. On `master` 27 of 32 checks in the file pass and the five failures are the fault:
+`Stopped after 6 rounds…`, nothing stored, no request pinned, no advice in the search result, no
+tool summary. On this branch all 32 pass. The harness stub `routeRaw` now accepts a function of
+the request and a JSON error body, which task 3 also uses.
+
+Not established: that this is the failure in the screenshot. It reproduces the logged line from a
+realistic flow, but the message was cropped; a 401, 402 or 429 would look the same in the log.
+
+Documentation changed in the same commit: the `setup.md` failure row for this message, a new
+hand-test step 17 (block `*duckduckgo.com*` and ask for something current), and the limit line in
+`repository-state.md`. `static`, `smoke`, `verify-ui`, `verify-ping` and sections A–E of `verify`
+are unchanged.
+
 ### Task 1 — chore/send-failures-plan
 
 Created this record and its row in `memory-index.md`. No code changed. The task list above is

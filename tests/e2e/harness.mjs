@@ -285,8 +285,10 @@ export async function startSite(makeHandler) {
  * repeats a tool-call id, carries an error frame, or stops without a trailing newline. Here
  * the body is yours, verbatim.
  *
- * @param {Array<{body: string, status?: number, delayMs?: number}>} rounds One entry per
- *   request the worker makes; the last is reused if the worker asks for more.
+ * @param {Array<{body?: string, json?: object, status?: number, delayMs?: number}>
+ *   | ((request: object, index: number) => {body?: string, json?: object, status?: number,
+ *   delayMs?: number})} rounds One entry per request the worker makes (the last is reused if
+ *   it asks for more), or a function from the request to its entry.
  * @returns {{requests: Array<object|null>}} the parsed JSON body of every request seen,
  *   in order. Read the array afterwards rather than destructuring it up front.
  */
@@ -304,14 +306,21 @@ export async function routeRaw(context, rounds) {
       state.requests.push(null);
     }
 
-    const entry = rounds[index] ?? rounds[rounds.length - 1];
+    // A function answers according to what the request carried — whether it declared tools,
+    // whether it pinned `tool_choice` — which a fixed list cannot, because the number of
+    // requests the worker makes is itself what some tests are about.
+    const entry =
+      typeof rounds === 'function'
+        ? rounds(state.requests[index], index)
+        : (rounds[index] ?? rounds[rounds.length - 1]);
     if (entry.delayMs) await new Promise((r) => setTimeout(r, entry.delayMs));
 
-    await route.fulfill({
-      status: entry.status ?? 200,
-      contentType: 'text/event-stream',
-      body: entry.body,
-    });
+    // `json` is an error body: OpenRouter refuses a request with a JSON document, not a stream.
+    await route.fulfill(
+      entry.json !== undefined
+        ? { status: entry.status ?? 400, contentType: 'application/json', body: JSON.stringify(entry.json) }
+        : { status: entry.status ?? 200, contentType: 'text/event-stream', body: entry.body },
+    );
   });
 
   return state;

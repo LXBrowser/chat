@@ -122,6 +122,18 @@ export async function runNetworkTool(name, args) {
 // search_web
 // ---------------------------------------------------------------------------
 
+/**
+ * Appended to every way a search can fail.
+ *
+ * A model told to search before it answers will, on a failure, try again with another query,
+ * and each try is a round of the tool loop. The advice goes in the tool result because that is
+ * the one place that always reaches the model: the system prompt is seeded into IndexedDB on
+ * first run and never refreshed, so a sentence added to it would not reach an existing install.
+ */
+const SEARCH_ADVICE =
+  ' If searching keeps failing, stop searching: answer from what you already know and say ' +
+  'plainly that you could not search.';
+
 async function search_web({ query, count } = {}) {
   const q = String(query ?? '').trim();
   if (!q) throw new Error('search_web needs a query.');
@@ -137,7 +149,7 @@ async function search_web({ query, count } = {}) {
   });
 
   if (!response.ok) {
-    throw new Error(`Search failed: DuckDuckGo returned ${response.status}.`);
+    throw new Error(`Search failed: DuckDuckGo returned ${response.status}.${SEARCH_ADVICE}`);
   }
 
   const html = await response.text();
@@ -148,7 +160,7 @@ async function search_web({ query, count } = {}) {
     // outside, and only one of them is the model's fault to work around.
     throw new Error(
       `No results for "${q}". The search backend may be rate-limiting, or its page ` +
-        'structure may have changed.',
+        `structure may have changed.${SEARCH_ADVICE}`,
     );
   }
 

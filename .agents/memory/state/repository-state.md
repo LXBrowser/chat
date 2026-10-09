@@ -140,7 +140,9 @@ pull the credential in even by accident.
   calls per send, and a prompt that uses tools is several calls for the Main Agent alone.
 * **A single request is capped at roughly five minutes** by Chrome. A very long answer is
   cut mid-stream and surfaces as an error, not a completion. The tool loop has its own
-  bound of six rounds.
+  bound of six rounds; the request after them is sent with `tool_choice: "none"`, so a model
+  that obeys answers instead of failing the send, and one that ignores it ends in an error
+  naming the tools it called.
 * **The service worker is terminated when idle.** A termination mid-stream is now
   retried once, visibly. **A ping keeps the worker warm between sends, but a pending
   `fetch` already holds it alive during a stream** — measured with a 45-second quiet

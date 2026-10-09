@@ -333,7 +333,9 @@ function wireComposer() {
       // mid-run does not reach here, because the worker hands the failure back to the
       // model as a failed tool result and the conversation continues.
       sendNote = err.message;
-      console.error('Send failed:', err.message);
+      // The error itself, not just its message: a fault in this page's own code is a
+      // TypeError with a stack, and the message alone is all the Errors page kept of one.
+      console.error('Send failed:', err);
     } finally {
       busy = false;
       views.renderSendState({ busy, note: sendNote });

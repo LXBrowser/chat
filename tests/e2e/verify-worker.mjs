@@ -270,6 +270,73 @@ const unexpected = errors.filter((e) => !e.includes('Send failed'));
 t.ok('no page error besides the deliberate failed sends', unexpected.length === 0, unexpected.join(' | ') || 'none');
 
 // ===========================================================================
+// C. The tool-round limit
+// ===========================================================================
+//
+// The model keeps asking to search, and the search backend keeps failing — DuckDuckGo
+// answering an extension with a bot challenge rather than results. A model told to search
+// before it answers will retry, and six rounds go quickly. The loop's last request is meant
+// to be the model's chance to answer with what it has; here it is held to that.
+
+console.log('\n--- C. the tool-round limit ---');
+
+let searches = 0;
+await context.route('https://html.duckduckgo.com/**', (route) => {
+  searches += 1;
+  return route.fulfill({
+    status: 202,
+    contentType: 'text/html',
+    body: '<html><body><p>Unfortunately, bots use DuckDuckGo too.</p></body></html>',
+  });
+});
+
+const askForSearch = (index) => ({ body: call(`call_s${index}`, 'search_web', { query: 'latest version of x' }) + DONE });
+
+// --- C1. A model that obeys `tool_choice: "none"` on the last request ----------
+
+const chatLoop = await newChat();
+let loop = await stubRounds((request, index) =>
+  request.tool_choice === 'none'
+    ? { body: say('Search is failing, so from what I know: it is fine.') + DONE }
+    : askForSearch(index));
+await send('what is the latest version of x?');
+
+const loopStatus = await statusNow();
+t.ok('the send succeeds instead of ending in an error', loopStatus === '', `status: "${loopStatus}"`);
+t.ok('...and the model\'s answer is what is stored',
+  (await assistantTurns(chatLoop)).join('|') === 'Search is failing, so from what I know: it is fine.',
+  JSON.stringify(await assistantTurns(chatLoop)));
+t.ok('seven requests were made: six tool rounds and one last chance', loop.requests.length === 7,
+  `${loop.requests.length} requests`);
+t.ok('only the last request forbids tools; every one of them still declares them',
+  loop.requests.every((r) => r.tools?.length > 0) &&
+    loop.requests.slice(0, 6).every((r) => !('tool_choice' in r)) &&
+    loop.requests[6]?.tool_choice === 'none',
+  JSON.stringify(loop.requests.map((r) => r.tool_choice ?? '-')));
+t.ok('the search really was attempted six times', searches === 6, `${searches} searches`);
+
+const lastSearchResult = loop.requests[6]?.messages?.filter((m) => m.role === 'tool').pop()?.content ?? '';
+t.ok('a failed search tells the model to stop searching and answer',
+  /stop searching/i.test(lastSearchResult) && /already know/i.test(lastSearchResult), JSON.stringify(lastSearchResult));
+
+// --- C2. A model that ignores it and asks for tools anyway ---------------------
+//
+// Nothing the extension sends can make a model obey. What it can do is fail with a message
+// that says what happened, instead of one that only says it stopped.
+
+await newChat();
+loop = await stubRounds((request, index) => askForSearch(index));
+await send('and again?');
+const ignoredStatus = await statusNow();
+t.ok('a model that still asks for tools ends in the named backstop',
+  /^Stopped after 6 rounds of tool calls without an answer \(search_web ×6\)\.$/.test(ignoredStatus),
+  `status: "${ignoredStatus}"`);
+t.ok('...after seven requests, not more', loop.requests.length === 7, `${loop.requests.length} requests`);
+
+const unexpectedC = errors.filter((e) => !e.includes('Send failed'));
+t.ok('no page error besides the deliberate failed send', unexpectedC.length === 0, unexpectedC.join(' | ') || 'none');
+
+// ===========================================================================
 await context.unroute(OPENROUTER);
 
 const allPassed = t.report();
