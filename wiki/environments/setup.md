@@ -167,6 +167,10 @@ never been run by anyone. Expect to find things that are not in here.
     ```
     It should return the bundled text from `src/prompts/system-instructions.md`. Reload,
     run it again — the same text, this time read from IndexedDB rather than the bundle.
+14. **Delete a chat that has messages.** Pick a chat that holds at least one exchange, not
+    an empty one, press its **×** and confirm. It leaves the list, and it is still gone
+    after a reload. An empty chat never reached the line that deletes messages, so only a
+    chat with messages proves the delete.
 
 ### If a send fails
 

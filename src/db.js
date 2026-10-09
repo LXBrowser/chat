@@ -167,8 +167,11 @@ export async function setTitle(id, title) {
 /** Deletes a session and, in the same transaction, every message in it. */
 export async function deleteSession(id) {
   return withTx(['chat_sessions', 'chat_messages'], 'readwrite', async (tx) => {
-    const messages = tx.objectStore('chat_messages').index('session_id');
-    const keys = await request(messages.getAllKeys(id));
+    // Keys come from the index, but the delete goes through the store: an `IDBIndex` can
+    // read, count and open cursors, and has no `delete`. Calling it on the index threw for
+    // any chat that held a message, and an empty chat never reached the line.
+    const messages = tx.objectStore('chat_messages');
+    const keys = await request(messages.index('session_id').getAllKeys(id));
     await Promise.all(keys.map((k) => request(messages.delete(k))));
     await request(tx.objectStore('chat_sessions').delete(id));
   });

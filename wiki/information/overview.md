@@ -57,7 +57,9 @@ delta assembly and the IndexedDB write all ran with no key and no billable call.
 key has still never exercised is everything downstream of the first answer:
 
 * load it unpacked; an API-key modal blocks the app until a key is stored — **confirmed**
-* start, open, rename, and delete chats — all stored locally in IndexedDB — **confirmed**
+* start, open, rename, and delete chats — all stored locally in IndexedDB — **confirmed**,
+  including deleting a chat that has messages (checked in a browser on 2026-10-09; before
+  that only empty chats had been deleted)
 * **send a prompt and watch the answer arrive word by word**; the prompt and the answer are
   both saved to the chat — *confirmed against a stubbed response, never a real one*
 * pick a model from the dropdown, or type any OpenRouter model id to override it — *the
