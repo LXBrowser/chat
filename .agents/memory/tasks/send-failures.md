@@ -66,9 +66,38 @@ the tree before its fix and passes after.
 | 1 | The task record | `chore/send-failures-plan` | |
 | 2 | The tool-round limit | `fix/tool-round-limit` | |
 | 3 | Models without tools | `fix/tool-less-models` | |
-| 4 | The release | `release/0.1.0` | |
+| 4 | Empty-answer reason | `fix/empty-answer-reason` | |
+| 5 | The release | `release/0.1.0` | |
 
 ## 2026-10-09
+
+### Task 4 — fix/empty-answer-reason
+
+**This task was added after the plan was written, by the re-probe that followed tasks 2 and 3:**
+the probes for the first two faults now passed, and the one that did not change — a stream that
+carries only reasoning — ended in "The model returned an empty answer.", which is accurate and
+says nothing about why. One of the two presets, `deepseek/deepseek-v4-flash`, is a reasoning
+model, and the cause of the reported failure was never confirmed, so the next report should be
+able to explain itself. The release task became task 5.
+
+`readSse` in `src/background.js` now also returns `finishReason`, the last non-null
+`finish_reason`, and `reasoningChars`, the length of every `delta.reasoning`. `converse` throws
+when a request ends with no tool calls and no text, and the message says only what is known: a
+stream with nothing in it gives the plain sentence; otherwise it adds how the model stopped and
+how many characters of reasoning arrived without an answer, for example `The model returned an
+empty answer (it stopped with "length"; 40 characters of reasoning arrived but no answer).` The
+page keeps its own empty-answer check as a backstop. A sub-agent that returns nothing now fails in
+the worker instead of finishing with an empty string; the interface does not show the difference.
+
+Checks are section E of `tests/e2e/verify-worker.mjs`. On the previous task's commit 46 of 49
+pass and the three failures are the two messages that should carry detail; the controls — a
+stream with nothing in it, and an ordinary answer — pass on both. On this branch all 49 pass.
+
+Nothing here makes a reasoning model answer. It only turns "empty" into a reason, and whether the
+output budget is the cause for `deepseek-v4-flash` is untested, because no request has used it
+with a real key.
+
+Documentation changed in the same commit: a row in the `setup.md` failure table.
 
 ### Task 3 — fix/tool-less-models
 
