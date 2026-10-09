@@ -417,6 +417,64 @@ const unexpectedD = errors.filter((e) => !e.includes('Send failed'));
 t.ok('no page error besides the deliberate failed sends', unexpectedD.length === 0, unexpectedD.join(' | ') || 'none');
 
 // ===========================================================================
+// E. An answer that came back empty says why
+// ===========================================================================
+//
+// "The model returned an empty answer." is true and tells you nothing. A reasoning model — one
+// of the two presets is — can spend its whole output budget thinking and stop with no answer at
+// all, which looks identical to a model that said nothing. How it stopped, and whether any
+// reasoning arrived, is the difference, and the worker is the only place that sees it.
+
+console.log('\n--- E. an answer that came back empty ---');
+
+const reasoning = (text) => frame({ choices: [{ delta: { reasoning: text } }] });
+const stopsWith = (reason) => frame({ choices: [{ delta: {}, finish_reason: reason }] });
+
+// --- E1. Reasoning only, cut off by the output limit ---------------------------
+
+const chatThinking = await newChat();
+let empties = await stubRounds([
+  { body: reasoning('Let me think about this. ') + reasoning('Still thinking.') + stopsWith('length') + DONE },
+]);
+await send('think hard');
+const thinking = await statusNow();
+t.ok('it says how the model stopped', /stopped with "length"/.test(thinking), `status: "${thinking}"`);
+t.ok('...and that reasoning arrived without an answer', /40 characters of reasoning arrived but no answer/.test(thinking),
+  `status: "${thinking}"`);
+t.ok('...and it is not retried or stored', empties.requests.length === 1 && (await assistantTurns(chatThinking)).length === 0,
+  `${empties.requests.length} request(s); stored: ${JSON.stringify(await assistantTurns(chatThinking))}`);
+
+// --- E2. No reasoning, a plain stop --------------------------------------------
+
+await newChat();
+empties = await stubRounds([{ body: stopsWith('stop') + DONE }]);
+await send('say nothing');
+const quiet = await statusNow();
+t.ok('a model that simply stopped says so', /^The model returned an empty answer \(it stopped with "stop"\)\.$/.test(quiet),
+  `status: "${quiet}"`);
+
+// --- E3. Only what is known is said (control) ----------------------------------
+
+await newChat();
+empties = await stubRounds([{ body: DONE }]);
+await send('a stream with nothing in it');
+const nothing = await statusNow();
+t.ok('with nothing known the sentence is the plain one (control)', nothing === 'The model returned an empty answer.',
+  `status: "${nothing}"`);
+
+// --- E4. An ordinary answer is untouched (control) -----------------------------
+
+const chatFine = await newChat();
+empties = await stubRounds([{ body: say('A normal answer.') + stopsWith('stop') + DONE }]);
+await send('an ordinary question');
+t.ok('a normal answer is still stored with no status (control)',
+  (await statusNow()) === '' && (await assistantTurns(chatFine)).join('|') === 'A normal answer.',
+  `status: "${await statusNow()}"; stored: ${JSON.stringify(await assistantTurns(chatFine))}`);
+
+const unexpectedE = errors.filter((e) => !e.includes('Send failed'));
+t.ok('no page error besides the deliberate failed sends', unexpectedE.length === 0, unexpectedE.join(' | ') || 'none');
+
+// ===========================================================================
 await context.unroute(OPENROUTER);
 
 const allPassed = t.report();

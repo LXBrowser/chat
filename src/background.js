@@ -238,9 +238,14 @@ async function converse(spec, onDelta, askPage, onNotice = () => {}) {
       result = await request();
     }
 
-    const { content, toolCalls } = result;
+    const { content, toolCalls, finishReason, reasoningChars } = result;
 
-    if (!toolCalls.length) return content;
+    if (!toolCalls.length) {
+      // No text and no tool call. Said here, where the stream's ending is known, because the page
+      // only ever sees an empty string.
+      if (!content.trim()) throw new Error(emptyAnswerMessage(finishReason, reasoningChars));
+      return content;
+    }
 
     if (round === MAX_TOOL_ROUNDS) {
       const summary = [...called].map(([name, n]) => (n > 1 ? `${name} ×${n}` : name)).join(', ');
@@ -270,6 +275,22 @@ async function converse(spec, onDelta, askPage, onNotice = () => {}) {
   }
 
   throw new Error('The conversation did not produce an answer.');
+}
+
+/**
+ * What to say when a request ended with nothing to show.
+ *
+ * Only what is known: a stream that carried nothing at all gets the plain sentence. A reasoning
+ * model that spends its whole output budget thinking stops with `length` and a pile of
+ * reasoning and no answer, which is a different problem from a model that said nothing, and the
+ * two used to read the same.
+ */
+function emptyAnswerMessage(finishReason, reasoningChars) {
+  const details = [];
+  if (finishReason) details.push(`it stopped with "${finishReason}"`);
+  if (reasoningChars) details.push(`${reasoningChars} characters of reasoning arrived but no answer`);
+
+  return `The model returned an empty answer${details.length ? ` (${details.join('; ')})` : ''}.`;
 }
 
 /** What the page shows while a model with no tool support answers. Short: it sits in one line. */
@@ -458,6 +479,12 @@ async function readSse(body, onDelta) {
   let buffer = '';
   let content = '';
 
+  /** How the stream says it ended, and how much reasoning came with it — for an empty answer. */
+  let finishReason = null;
+  let reasoningChars = 0;
+
+  const outcome = () => ({ content, toolCalls: finishToolCalls(calls), finishReason, reasoningChars });
+
   /** Handles one line of the stream. Returns true when it was the end-of-stream sentinel. */
   const handleLine = (rawLine) => {
     const line = rawLine.trim();
@@ -479,8 +506,15 @@ async function readSse(body, onDelta) {
     const failure = providerError(parsed);
     if (failure) throw failure;
 
+    const reason = parsed?.choices?.[0]?.finish_reason;
+    if (reason) finishReason = reason;
+
     const delta = parsed?.choices?.[0]?.delta;
     if (!delta) return false;
+
+    // A reasoning model streams its thinking apart from its answer, and the page never shows
+    // it. It is counted, not kept: what matters is whether any arrived when the answer did not.
+    if (typeof delta.reasoning === 'string') reasoningChars += delta.reasoning.length;
 
     // Prose goes to the page as it arrives. Tool-call fragments do not: they are JSON
     // being assembled a few characters at a time, and showing them would mean the
@@ -515,7 +549,7 @@ async function readSse(body, onDelta) {
         // this the reader would sit until the server closes it.
         if (handleLine(line)) {
           await reader.cancel();
-          return { content, toolCalls: finishToolCalls(calls) };
+          return outcome();
         }
       }
     }
@@ -531,7 +565,7 @@ async function readSse(body, onDelta) {
     throw err;
   }
 
-  return { content, toolCalls: finishToolCalls(calls) };
+  return outcome();
 }
 
 /**
