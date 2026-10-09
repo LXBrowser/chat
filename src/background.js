@@ -357,6 +357,8 @@ async function streamChat({ model, messages, tools, signal }, onDelta) {
  * The buffer is carried across chunk boundaries: a chunk can split a frame anywhere,
  * including mid-JSON, so anything after the last newline is held until the next read
  * rather than being parsed and discarded.
+ *
+ * Throws if the provider reports an error inside the stream. See `providerError`.
  */
 async function readSse(body, onDelta) {
   const reader = body.getReader();
@@ -365,57 +367,107 @@ async function readSse(body, onDelta) {
   let buffer = '';
   let content = '';
 
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  /** Handles one line of the stream. Returns true when it was the end-of-stream sentinel. */
+  const handleLine = (rawLine) => {
+    const line = rawLine.trim();
+    if (!line.startsWith('data:')) return false;
 
-    buffer += decoder.decode(value, { stream: true });
+    const frame = line.slice(5).trim();
+    if (!frame) return false;
 
+    if (frame === DONE) return true;
+
+    let parsed;
+    try {
+      parsed = JSON.parse(frame);
+    } catch {
+      // A frame we cannot parse is not worth failing the whole response over.
+      return false;
+    }
+
+    const failure = providerError(parsed);
+    if (failure) throw failure;
+
+    const delta = parsed?.choices?.[0]?.delta;
+    if (!delta) return false;
+
+    // Prose goes to the page as it arrives. Tool-call fragments do not: they are JSON
+    // being assembled a few characters at a time, and showing them would mean the
+    // transcript fills with a broken argument string.
+    if (typeof delta.content === 'string' && delta.content) {
+      content += delta.content;
+      onDelta(delta.content);
+    }
+
+    for (const fragment of delta.tool_calls ?? []) {
+      accumulateToolCall(calls, fragment);
+    }
+
+    return false;
+  };
+
+  try {
     for (;;) {
-      const newline = buffer.indexOf('\n');
-      if (newline === -1) break;
+      const { done, value } = await reader.read();
+      if (done) break;
 
-      const line = buffer.slice(0, newline).trim();
-      buffer = buffer.slice(newline + 1);
+      buffer += decoder.decode(value, { stream: true });
 
-      if (!line.startsWith('data:')) continue;
+      for (;;) {
+        const newline = buffer.indexOf('\n');
+        if (newline === -1) break;
 
-      const frame = line.slice(5).trim();
-      if (!frame) continue;
+        const line = buffer.slice(0, newline);
+        buffer = buffer.slice(newline + 1);
 
-      // The stream is over. Cancel so the connection is not left half-read; without
-      // this the reader would sit until the server closes it.
-      if (frame === DONE) {
-        await reader.cancel();
-        return { content, toolCalls: finishToolCalls(calls) };
-      }
-
-      let parsed;
-      try {
-        parsed = JSON.parse(frame);
-      } catch {
-        // A frame we cannot parse is not worth failing the whole response over.
-        continue;
-      }
-
-      const delta = parsed?.choices?.[0]?.delta;
-      if (!delta) continue;
-
-      // Prose goes to the page as it arrives. Tool-call fragments do not: they are JSON
-      // being assembled a few characters at a time, and showing them would mean the
-      // transcript fills with a broken argument string.
-      if (typeof delta.content === 'string' && delta.content) {
-        content += delta.content;
-        onDelta(delta.content);
-      }
-
-      for (const fragment of delta.tool_calls ?? []) {
-        accumulateToolCall(calls, fragment);
+        // The stream is over. Cancel so the connection is not left half-read; without
+        // this the reader would sit until the server closes it.
+        if (handleLine(line)) {
+          await reader.cancel();
+          return { content, toolCalls: finishToolCalls(calls) };
+        }
       }
     }
+
+    // The body ended. Whatever is still in the buffer is a frame whose newline never came —
+    // a provider that closes the connection straight after its last `data:` line. Dropping
+    // it silently lost the end of the answer, with nothing to say anything was missing.
+    buffer += decoder.decode();
+    if (buffer.trim()) handleLine(buffer);
+  } catch (err) {
+    // A provider error, or a read that failed. Do not leave the connection half-read.
+    await reader.cancel().catch(() => {});
+    throw err;
   }
 
   return { content, toolCalls: finishToolCalls(calls) };
+}
+
+/**
+ * An error the provider reported inside the stream, or null.
+ *
+ * A request can be accepted, answered with 200 and a stream, and then fail partway: the
+ * upstream provider drops, a quota trips, a moderation filter fires. OpenRouter reports
+ * that as a `data:` frame carrying `error` (and `finish_reason: "error"`) rather than as
+ * an HTTP status, because the status went out long ago. Without reading it, a failure
+ * before any text looked like an empty answer, and one after some text returned the
+ * truncated text as though it were complete.
+ *
+ * Only the provider's own message is used — never headers or the request, so the key
+ * cannot reach it.
+ */
+function providerError(parsed) {
+  const error = parsed?.error;
+  if (error) {
+    const reason = typeof error === 'string' ? error : error.message;
+    return new Error(`The provider stopped the answer: ${reason || 'no reason was given'}.`);
+  }
+
+  if (parsed?.choices?.[0]?.finish_reason === 'error') {
+    return new Error('The provider stopped the answer with an error and gave no reason.');
+  }
+
+  return null;
 }
 
 /**
@@ -434,20 +486,36 @@ function accumulateToolCall(calls, fragment) {
     calls.set(index, call);
   }
 
-  // Appended rather than assigned: some providers stream the name in fragments too, and
-  // assigning would keep only the last piece of it.
-  if (fragment.id) call.id += fragment.id;
-  if (fragment.function?.name) call.function.name += fragment.function.name;
+  // Providers differ on where the header goes. Most send the id and the name once, on the
+  // first fragment, and the arguments after. Some send the id and the name again on every
+  // fragment. A fragment that carries the id this call already has is the second kind: it
+  // repeats the header, so appending it would turn "search_web" into "search_websearch_web"
+  // and the id into three copies of itself, and the tool would never be found.
+  const repeatsHeader = Boolean(fragment.id) && fragment.id === call.id;
+
+  // Appended rather than assigned otherwise: some providers stream the name in fragments
+  // too, and assigning would keep only the last piece of it. The cost of the id test is a
+  // call whose id is itself streamed in pieces and happens to repeat — not seen, and no
+  // worse than the failure it prevents.
+  if (fragment.id && !repeatsHeader) call.id += fragment.id;
+  if (fragment.function?.name && !repeatsHeader) call.function.name += fragment.function.name;
   if (fragment.function?.arguments) call.function.arguments += fragment.function.arguments;
 
   return call;
 }
 
-/** The assembled tool calls, in the order the model emitted them. */
+/**
+ * The assembled tool calls, in the order the model emitted them.
+ *
+ * `index` is how fragments were matched up while streaming and is dropped here. These
+ * objects are sent back to the provider as the assistant's own turn, where a call is
+ * `{ id, type, function }` — a streaming-only field in a request is not part of that
+ * shape, and strict providers reject what they do not recognise.
+ */
 function finishToolCalls(calls) {
   return [...calls.entries()]
     .sort((a, b) => a[0] - b[0])
-    .map(([index, call]) => ({ index, ...call }))
+    .map(([, call]) => call)
     .filter((call) => call.id && call.function.name);
 }
 
