@@ -61,6 +61,45 @@ ordinary web. Done when:
 
 ## 2026-10-09
 
+### Task 6 — fix/stream-parsing
+
+Four faults in how `src/background.js` reads and echoes the stream. All four were found by
+reading the code and are now reproduced in a browser; one, the provider error, turned out
+worse than first written.
+
+* **The echoed tool call carried a streaming-only `index`.** `finishToolCalls` kept it, and
+  the assistant turn sent back to the provider was `{ index, id, type, function }`. Whether
+  any provider rejects the extra field was not established — there is no live call here — so
+  the change is to send the documented shape, not a claimed fix for a seen rejection.
+* **A provider that repeats the id and name on every chunk was concatenated.** Reproduced:
+  the id became `call_repcall_repcall_rep` and the name `update_chat_titleupdate_chat_title…`,
+  so the tool was never found. A fragment whose id equals the call's own is now treated as a
+  repeated header and its id and name are not appended; arguments still are. A name split
+  across chunks with the id sent once still joins, and a check keeps it that way.
+* **A provider error inside the stream was ignored.** OpenRouter reports a failure after the
+  200 as a `data:` frame with `error` and `finish_reason: "error"`. With no text before it
+  that read as "The model returned an empty answer." With some text before it, **the truncated
+  text was stored as a complete answer and nothing was shown** — reproduced with `Half an ans`
+  stored and an empty status. `providerError` now throws the provider's own message
+  (`The provider stopped the answer: …`); it is not retried, nothing is stored, and what had
+  arrived stays on screen as it does for any failed send.
+* **A last frame with no trailing newline was dropped.** The decoder is flushed and the
+  leftover buffer handled when the body ends. Reproduced: `The ` stored instead of `The end`.
+
+Checks are section B of `tests/e2e/verify-worker.mjs`, written first with `routeRaw` because
+`routeOpenRouter` can only produce a well-behaved stream. On the tree before the fix (the
+task 5 commit) 14 of 23 pass and the nine failures are exactly the faults above. The controls
+pass on both trees by design: the tool still runs once the index is dropped, a name split
+across chunks still joins, and a provider error is neither retried nor stored. On this branch
+all 23 pass. Section A of the same file is task 5's.
+
+Not established: a real provider's behaviour. The error-frame shape is OpenRouter's documented
+one, written by hand into a stub, not captured from a live stream.
+
+Documentation changed in the same commit: a row in the `setup.md` failure table for the new
+message. `static`, `smoke`, `verify-ping`, `verify-ui` and sections A–E of `verify.mjs` are
+unchanged.
+
 ### Task 5 — fix/read-page-redirects
 
 `read_page` fetched with `redirect: 'manual'` and read `Location` off the response. A browser

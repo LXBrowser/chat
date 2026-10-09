@@ -194,6 +194,7 @@ The reason appears under the Send button, and the status line above the conversa
 | `OpenRouter returned 400` with a model error | The model id is wrong. Type a different one in the custom box. |
 | `No OpenRouter key is stored` | Should be impossible — the modal blocks first. Reopen Settings and save the key again. |
 | `The background worker went away` | The service worker was terminated mid-request. Send again. |
+| `The provider stopped the answer: <reason>` | OpenRouter accepted the request and the model's provider failed part-way through. The reason is the provider's own words. Whatever text had arrived stays on screen but is **not** saved as an answer. Send again, or pick another model. |
 | `Stopped after 6 rounds of tool calls without an answer` | The model kept asking for tools instead of answering. Rephrase, or drop the custom model box for a known preset. |
 | `search_web failed: No results for "…"` | DuckDuckGo rate-limited, or its page structure changed. The latter is `parseSearchResults` in `src/tools.js`. |
 | `Only https URLs can be read` | A tool was pointed at a local file or a plain-http link. Expected — the model has to follow a search result instead. |

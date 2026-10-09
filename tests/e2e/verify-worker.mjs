@@ -157,6 +157,119 @@ t.ok('no page error', errors.length === 0, errors.join(' | ') || 'none');
 await site.stop();
 
 // ===========================================================================
+// B. The stream: tool calls, provider errors, the last frame
+// ===========================================================================
+//
+// Each scenario opens a fresh chat, so what it reads back is its own. The bodies are written
+// by hand with `routeRaw` because a well-behaved provider's stream — which is all
+// `routeOpenRouter` can produce — never repeats a tool-call id, carries an error, or stops
+// without a newline.
+
+console.log('\n--- B. the stream: tool calls, provider errors, the last frame ---');
+
+const newChat = async () => {
+  await page.click('[data-action="new-chat"]');
+  await page.waitForTimeout(400);
+  return page.evaluate(async () => (await import('./lib/sessions.js')).current());
+};
+const titleNow = () => page.locator('#chat-title').inputValue();
+const statusNow = () => page.locator('#send-status').textContent();
+const assistantTurns = (id) =>
+  page.evaluate(async (sessionId) => {
+    const db = await import('../db.js');
+    return (await db.listMessages(sessionId)).filter((m) => m.role === 'assistant').map((m) => m.content.trim());
+  }, id);
+
+const titleCall = (title) => ({ index: 0, id: 'call_t', function: { name: 'update_chat_title', arguments: JSON.stringify({ title }) } });
+const toolFrame = (fragment) => frame({ choices: [{ delta: { tool_calls: [fragment] } }] });
+const errorFrame = frame({
+  error: { code: 'server_error', message: 'Provider disconnected' },
+  choices: [{ delta: { content: '' }, finish_reason: 'error' }],
+});
+
+// --- B1. The tool call echoed back is the shape the API defines ----------------
+
+await newChat();
+let stream = await stubRounds([
+  { body: toolFrame(titleCall('Index check')) + DONE },
+  { body: say('done') + DONE },
+]);
+await send('echo check');
+
+const echoed = stream.requests[1]?.messages?.find((m) => m.role === 'assistant')?.tool_calls ?? [];
+t.ok('the tool call is echoed back without the streaming index',
+  echoed.length === 1 && !('index' in echoed[0]), JSON.stringify(echoed));
+t.ok('...and keeps exactly id, type and function',
+  echoed.length === 1 && Object.keys(echoed[0]).sort().join() === 'function,id,type', JSON.stringify(Object.keys(echoed[0] ?? {})));
+t.ok('...and the tool still ran', (await titleNow()) === 'Index check', `title: "${await titleNow()}"`);
+
+// --- B2. A provider that repeats the id and the name on every chunk -----------
+
+await newChat();
+const header = { index: 0, id: 'call_rep', name: 'update_chat_title' };
+stream = await stubRounds([
+  {
+    body:
+      toolFrame({ index: 0, id: header.id, function: { name: header.name, arguments: '' } }) +
+      toolFrame({ index: 0, id: header.id, function: { name: header.name, arguments: '{"title":"Rep' } }) +
+      toolFrame({ index: 0, id: header.id, function: { name: header.name, arguments: 'eated"}' } }) +
+      DONE,
+  },
+  { body: say('done') + DONE },
+]);
+await send('repeat check');
+
+const repeated = stream.requests[1]?.messages?.find((m) => m.role === 'assistant')?.tool_calls?.[0];
+t.ok('a repeated id is kept as one id', repeated?.id === 'call_rep', JSON.stringify(repeated?.id));
+t.ok('a repeated name is kept as one name', repeated?.function?.name === 'update_chat_title', JSON.stringify(repeated?.function?.name));
+t.ok('...so the tool runs', (await titleNow()) === 'Repeated', `title: "${await titleNow()}"`);
+
+// Control: a name legitimately split across chunks, with the id sent once, must still join.
+await newChat();
+stream = await stubRounds([
+  {
+    body:
+      toolFrame({ index: 0, id: 'call_split', function: { name: 'update_chat', arguments: '' } }) +
+      toolFrame({ index: 0, function: { name: '_title', arguments: '{"title":"Split name"}' } }) +
+      DONE,
+  },
+  { body: say('done') + DONE },
+]);
+await send('split check');
+t.ok('a name split across chunks is still joined (control)', (await titleNow()) === 'Split name', `title: "${await titleNow()}"`);
+
+// --- B3. A provider error in the middle of the stream --------------------------
+
+const chatNoText = await newChat();
+stream = await stubRounds([{ body: errorFrame + DONE }]);
+await send('error with nothing before it');
+const statusPlain = await statusNow();
+t.ok('the provider\'s own reason is shown', /Provider disconnected/.test(statusPlain), `status: "${statusPlain}"`);
+t.ok('...and is not retried', stream.requests.length === 1, `${stream.requests.length} request(s)`);
+t.ok('...and nothing is stored as an answer', (await assistantTurns(chatNoText)).length === 0,
+  JSON.stringify(await assistantTurns(chatNoText)));
+
+const chatPartial = await newChat();
+stream = await stubRounds([{ body: say('Half an ans') + errorFrame + DONE }]);
+await send('error after some text');
+const statusPartial = await statusNow();
+t.ok('the reason is shown when text had already arrived', /Provider disconnected/.test(statusPartial), `status: "${statusPartial}"`);
+t.ok('a cut-off answer is not stored as if it were complete', (await assistantTurns(chatPartial)).length === 0,
+  JSON.stringify(await assistantTurns(chatPartial)));
+
+// --- B4. The last frame has no newline after it --------------------------------
+
+const chatTail = await newChat();
+stream = await stubRounds([{ body: say('The ') + say('end').trimEnd() }]);
+await send('no trailing newline');
+t.ok('the final frame is read even with no newline after it',
+  (await assistantTurns(chatTail)).join('|') === 'The end', JSON.stringify(await assistantTurns(chatTail)));
+
+// The two provider-error sends log a console error by design; anything else is a fault.
+const unexpected = errors.filter((e) => !e.includes('Send failed'));
+t.ok('no page error besides the deliberate failed sends', unexpected.length === 0, unexpected.join(' | ') || 'none');
+
+// ===========================================================================
 await context.unroute(OPENROUTER);
 
 const allPassed = t.report();
