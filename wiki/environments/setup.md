@@ -141,7 +141,8 @@ never been run by anyone. Expect to find things that are not in here.
    all** — the transcript holds the main agent's answer and nothing else.
 7. **Rename the chat.** Edit the title field; "Saved" flashes and the history list updates.
 8. **New chat, then switch between them.** Chats persist across a reload.
-9. **Drop a file on the dropzone.** It is listed. It is *not* attached to anything yet.
+9. **Drop a file on the dropzone.** It is listed. It is *not* attached to anything yet, and
+   the hint under the dropzone says so.
 10. **Make it look something up.** Ask a question a stored answer does not cover —
     "what is the latest stable version of X" or "find me an article about Y". The status
     line should read **Searching…** and then **Reading…** while it works, and the answer

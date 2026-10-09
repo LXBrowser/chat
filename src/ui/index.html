@@ -153,10 +153,17 @@
 
       <!-- File import + drag and drop. -->
       <div class="dropzone" id="dropzone" tabindex="0" role="button"
-           aria-label="Add files by clicking to browse, or by dropping them here">
+           aria-label="Add files by clicking to browse, or by dropping them here"
+           aria-describedby="file-hint">
         <strong>Drop files here</strong> or click to browse
         <ul class="dropzone__list" id="file-list"></ul>
       </div>
+      <!-- Files are listed and nothing more: their contents are never attached to a
+           message. Said here because the list alone reads as if they were. Same hint
+           style as the other two controls in this pane. -->
+      <p class="lead hint" id="file-hint">
+        Files are listed here only — their contents are not sent to the model yet.
+      </p>
       <input type="file" id="file-input" multiple hidden>
 
       <!-- Prompt. The composer takes the pane's slack; the textarea scrolls. -->

@@ -61,6 +61,27 @@ ordinary web. Done when:
 
 ## 2026-10-09
 
+### Task 8 — fix/dropzone-label
+
+The dropzone lists a dropped or chosen file and does nothing else: the file's contents are
+never attached to a message, which the docs have always said. The interface said nothing, so
+a listed file read as one the model had. This is a limit, not a fault, and the fix is a label
+and not a feature — reading attached files stays a separate decision for the owner.
+
+One line under the dropzone in `src/ui/index.html`, `Files are listed here only — their
+contents are not sent to the model yet.`, in the existing `lead hint` style the other two
+controls in that pane use, with `aria-describedby` from the dropzone to it. No new class and
+no style attribute. Looked at in a screenshot at 1440 px: it matches the hint above it, wraps
+to two lines at the pane's width, the composer keeps 341 px, and the pane does not scroll.
+
+Checks are section D of `tests/e2e/verify-ui.mjs`. On the tree before the fix (the task 7
+commit) the four label checks fail (no element, not visible, no text, no `aria-describedby`)
+and the control — a chosen file is still listed — passes; on this branch all 36 checks in the
+file pass. `static.mjs` still passes, which covers that every class and id resolves.
+
+Documentation changed in the same commit: `wiki/environments/setup.md` step 9 mentions the
+hint.
+
 ### Task 7 — fix/key-modal-enter
 
 The key modal listens for Enter on `document`, so it also heard Enter on every button in the

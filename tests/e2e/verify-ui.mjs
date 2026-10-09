@@ -307,6 +307,35 @@ t.ok('Enter on the Update key button saves (control)', (await storedKey()) === '
   `stored: "${await storedKey()}"`);
 
 // ===========================================================================
+// D. The dropzone says what it does with a file
+// ===========================================================================
+//
+// Attached files are listed and never read. That is a limit, not a fault, but a dropzone
+// that says nothing about it implies the opposite: someone drops a file, sees it listed, and
+// reasonably expects the model to have it.
+
+console.log('\n--- D. the dropzone is honest about its files ---');
+
+await page.reload();
+await page.waitForSelector('.history__item');
+
+const hint = page.locator('#file-hint');
+t.ok('a hint sits beside the dropzone', (await hint.count()) === 1, `${await hint.count()} element(s) with id file-hint`);
+t.ok('...and is visible', (await hint.count()) === 1 && (await hint.isVisible()));
+const hintText = (await hint.count()) ? (await hint.textContent()).trim() : '';
+t.ok('...and says the contents are not sent', /not sent/i.test(hintText), `"${hintText}"`);
+t.ok('...and the dropzone is described by it',
+  (await page.locator('#dropzone').getAttribute('aria-describedby')) === 'file-hint',
+  `aria-describedby="${await page.locator('#dropzone').getAttribute('aria-describedby')}"`);
+
+// Control: a chosen file is still listed, as before.
+await page.setInputFiles('#file-input', { name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') });
+await page.waitForTimeout(200);
+t.ok('a chosen file is still listed (control)',
+  (await page.locator('#file-list .dropzone__file').allTextContents()).some((s) => s.includes('notes.txt')),
+  JSON.stringify(await page.locator('#file-list .dropzone__file').allTextContents()));
+
+// ===========================================================================
 const allPassed = t.report();
 console.log(allPassed ? '\nALL CHECKS PASSED' : '\nSOME CHECKS FAILED');
 await close();
