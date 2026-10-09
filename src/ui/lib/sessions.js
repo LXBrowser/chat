@@ -37,6 +37,16 @@ export async function getCurrent() {
   return db.getSession(currentId);
 }
 
+/**
+ * The full record for a session by id, or null if it no longer exists.
+ *
+ * For anything that began in one chat and finishes while another may be open. "The open
+ * chat" is where the person is looking now, not where the work belongs.
+ */
+export async function getSession(id) {
+  return (await db.getSession(id)) ?? null;
+}
+
 // ---------------------------------------------------------------------------
 // Queries
 // ---------------------------------------------------------------------------
@@ -77,12 +87,17 @@ export async function openSession(id) {
   return session;
 }
 
+/** Renames a session by id. Rejects if it does not exist. Returns the updated record. */
+export async function renameSession(id, title) {
+  const session = await db.setTitle(id, title);
+  emit();
+  return session;
+}
+
 /** Renames the current session. Returns the updated record. */
 export async function renameCurrent(title) {
   if (!currentId) throw new Error('No session is open');
-  const session = await db.setTitle(currentId, title);
-  emit();
-  return session;
+  return renameSession(currentId, title);
 }
 
 /** Deletes a session and clears the pane when it was the open one. */

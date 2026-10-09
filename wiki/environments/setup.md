@@ -171,6 +171,12 @@ never been run by anyone. Expect to find things that are not in here.
     an empty one, press its **×** and confirm. It leaves the list, and it is still gone
     after a reload. An empty chat never reached the line that deletes messages, so only a
     chat with messages proves the delete.
+15. **Leave a chat while it is being answered.** Send a prompt, and before the answer
+    arrives click another chat in the history. The other chat shows nothing of it — no
+    half-written bubble, no answer. Click back and the answer is there, in the chat you
+    asked in. If the title tool renames the chat, it is that chat that changes. Delete the
+    chat while it is being answered and the status under Send says so; the answer is not
+    filed anywhere else.
 
 ### If a send fails
 

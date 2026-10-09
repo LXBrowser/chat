@@ -289,11 +289,18 @@ function wireComposer() {
     views.renderSendState({ busy, note: sendNote });
 
     try {
+      // The chat this send belongs to, fixed now. Everything below — the title, the stored
+      // turns, the context, the answer, a tool's rename — is about this chat, not about
+      // whichever one is open when it happens. A reply takes seconds, and the history list
+      // stays clickable the whole time.
+      const sessionId = sessions.current();
+      if (!sessionId) throw new Error('No chat is open to send to.');
+
       // Derive a title from the first prompt, so the history list is not a column of
       // "New Chat". Only if the title has not been set deliberately.
-      const session = await sessions.getCurrent();
+      const session = await sessions.getSession(sessionId);
       if (session && session.title === 'New Chat') {
-        await sessions.renameCurrent(content.slice(0, 60));
+        await sessions.renameSession(sessionId, content.slice(0, 60));
       }
 
       prompt.value = '';
@@ -301,9 +308,9 @@ function wireComposer() {
       // Recorded before the request, so the context sent back to the model includes the
       // turn being answered — and so an interrupted answer still leaves the prompt in
       // the history.
-      await sessions.appendMessage('user', content);
+      await sessions.appendMessage('user', content, sessionId);
 
-      const history = await conversationContext();
+      const history = await conversationContext(sessionId);
 
       // Sub-agents run alongside the Main Agent, not before it. Their failures are logged
       // in their own agents, so this only rejects if the fan-out itself cannot be built —
@@ -315,7 +322,7 @@ function wireComposer() {
           })
         : Promise.resolve();
 
-      await runMainAgent(history);
+      await runMainAgent(history, sessionId);
       await subAgents;
 
       // Cleared only on the way through: a failure leaves its message showing.
@@ -462,9 +469,11 @@ function wireModel() {
  *
  * Read after the new prompt is stored, so the turn being answered is included. Empty
  * content is dropped rather than sent: some providers reject an empty message outright.
+ *
+ * Of the chat that is being answered, which is not necessarily the one open by now.
  */
-async function conversationContext() {
-  const messages = await sessions.listMessages();
+async function conversationContext(sessionId) {
+  const messages = await sessions.listMessages(sessionId);
   return messages
     .filter((m) => m.content && m.content.trim())
     .map((m) => ({ role: m.role, content: m.content }));
@@ -483,12 +492,15 @@ async function conversationContext() {
  * Only the Main Agent gets tools. The worker runs the network ones and forwards
  * `update_chat_title` back here, because renaming touches the database and the title bar,
  * and neither is reachable from the worker.
+ *
+ * `sessionId` is the chat that asked. The answer is written to it and a title tool renames
+ * it, wherever the person has navigated to in the meantime.
  */
-async function runMainAgent(history) {
+async function runMainAgent(history, sessionId) {
   const model = storage.effectiveModel(settings);
   const agent = agents.spawn({ name: 'Main Agent', task: summarise(history) });
 
-  const handle = views.startStream();
+  const handle = views.startStream(sessionId);
   setActivity('Working…', { running: true });
 
   // Set once, on the first chunk. Re-running it per delta would rewrite the same text
@@ -525,7 +537,7 @@ async function runMainAgent(history) {
       streaming = false;
       setActivity(toolActivity(call.name), { running: true });
     },
-    onTool: (name, args) => runPageTool(name, parseArgs(args)),
+    onTool: (name, args) => runPageTool(name, parseArgs(args), { sessionId }),
   };
 
   try {
@@ -552,13 +564,21 @@ async function runMainAgent(history) {
     // would show.
     if (!answer.trim()) throw new Error('The model returned an empty answer.');
 
+    // The chat can be deleted while its answer is on the way. Said before the agent
+    // finishes, for the same reason as the empty answer above, and so the status row never
+    // reads "Answer ready" for an answer with nowhere to go. Filing it under whichever chat
+    // happens to be open instead would put it in a conversation that never asked.
+    if (!(await sessions.getSession(sessionId))) {
+      throw new Error('This chat was deleted before the answer arrived.');
+    }
+
     agents.finish(agent.id);
     setActivity('Answer ready', { done: true });
 
     // Before the write, not after: storing repaints the transcript from the database, and
     // the streamed copy has to be gone before that repaint or the answer appears twice.
     views.discardStream();
-    await sessions.appendMessage('assistant', answer);
+    await sessions.appendMessage('assistant', answer, sessionId);
   } catch (err) {
     agents.fail(agent.id);
     // Nothing was stored, so whatever arrived stays on screen — a partial answer is still
