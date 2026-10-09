@@ -86,7 +86,8 @@ invisible to 122 static checks, none of which execute `app.js`.
 
 What the browser harness confirms: boot completes, the gate opens and closes, the model
 dropdown populates, history renders with real `data-*` attributes and its rows switch chats,
-the title input follows, delete works, the multi-agent toggle flips, the modal opens and
+the title input follows, delete works (for a chat with messages too — until 2026-10-09 it
+had only been driven on empty chats), the multi-agent toggle flips, the modal opens and
 cancels, Clear empties the textarea, Send enters its busy state and re-enables, and a
 dropped file is listed. No page errors.
 
@@ -106,7 +107,8 @@ merely unused — the only accessor left returns a boolean — so no code path i
 pull the credential in even by accident.
 
 * Load unpacked; the API-key modal blocks until a key is stored. **Confirmed.**
-* New chat, open chat, delete chat, rename chat — all against IndexedDB. **Confirmed.**
+* New chat, open chat, delete chat (including one with messages), rename chat — all against
+  IndexedDB. **Confirmed.**
 * **Send a prompt and get a streamed answer**, token by token, in the centre pane. The
   prompt and the final answer are both stored in `chat_messages`. **Confirmed against a
   stubbed response** — the worker's `fetch` was replaced with a scripted SSE body, so the

@@ -61,6 +61,28 @@ ordinary web. Done when:
 
 ## 2026-10-09
 
+### Task 3 — fix/chat-delete
+
+`deleteSession` in `src/db.js` took its message keys from the `session_id` index and then
+called `.delete()` on the index. An `IDBIndex` has no `delete`, so any chat holding a
+message threw `messages.delete is not a function`: the chat and its messages stayed, and
+the interface showed nothing. An empty chat never reached the line, which is why "delete
+works" had been recorded as confirmed. The keys still come from the index; the delete now
+goes through the object store.
+
+`tests/e2e/verify-ui.mjs` is new and is where the next UI checks go. Its delete section
+seeds chats through `db.js` with real messages and includes an empty-chat control. On the
+pre-fix tree 4 of 9 checks pass and five fail with `messages.delete is not a function`, the
+chat still listed, the session still stored and two messages left; on this branch 9 of 9
+pass. The file also refuses any request to OpenRouter and counts it (0).
+
+Documentation changed in the same commit: `wiki/information/overview.md`,
+`wiki/environments/setup.md` (step 14) and `.agents/memory/state/repository-state.md` no
+longer imply delete had been checked on chats with messages. `npm test` gained `verify:ui`.
+
+Later tasks add their UI checks to `verify-ui.mjs` and reuse its `seedChat`, `stored`,
+`deleteChat` and `titles` helpers.
+
 ### Task 2 — test/e2e-harness-startup
 
 `launch()` now waits until the worker has `chrome.runtime` and `chrome.storage` before it

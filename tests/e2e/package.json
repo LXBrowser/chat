@@ -8,8 +8,9 @@
     "smoke": "node smoke.mjs",
     "static": "node static.mjs",
     "verify": "node verify.mjs",
+    "verify:ui": "node verify-ui.mjs",
     "verify:ping": "node verify-ping.mjs",
-    "test": "npm run static && npm run smoke && npm run verify && npm run verify:ping"
+    "test": "npm run static && npm run smoke && npm run verify && npm run verify:ui && npm run verify:ping"
   },
   "devDependencies": {
     "playwright": "^1.63.0"
