@@ -61,6 +61,64 @@ ordinary web. Done when:
 
 ## 2026-10-09
 
+### Task 5 — fix/read-page-redirects
+
+`read_page` fetched with `redirect: 'manual'` and read `Location` off the response. A browser
+returns a manual redirect as an opaque response — type `opaqueredirect`, status 0, no
+headers — so the branch that followed a redirect could never run, and every redirecting URL
+(apex to `www`, a trailing slash, a shortener) reached the model as
+`read_page failed: <host> returned 0.` The earlier records listed "whether Chrome returns a
+readable `Location`" as unobserved; it is now observed, and it does not.
+
+`fetchChecked` in `src/tools.js` now checks the URL it is given before the request exactly
+as before, fetches with `redirect: 'follow'` and `credentials: 'omit'`, and, when the request
+was redirected, applies the same https and address checks to where it landed (`checkLanding`).
+A refused landing is cancelled with its body unread and the error names both hosts. The hop
+loop, `MAX_REDIRECTS` and `redirectTarget` are gone; Chrome limits redirect chains itself.
+
+**The cost, measured and accepted by the owner:** the landing can only be checked after the
+request is sent, so a public page that redirects to a private address, a private name or
+plain `http` still causes one GET to it, without cookies, before it is refused. Nothing it
+returns is read. The checks assert exactly one request to each refused landing. Separately,
+the manifest grants `https` hosts only, so Chrome blocks reading an `http` response unless
+the server sends `Access-Control-Allow-Origin`; the test server sends it so the extension's
+own scheme check is the thing under test.
+
+Checks are `tests/e2e/verify-worker.mjs`, new, run through the whole chat flow: the model asks
+for a page and the observable is the `tool` message in the second request. On the tree
+before the fix (the task 4 commit) 3 of 9 pass and every redirect case fails with
+`example.test returned 0.` and zero requests reaching any landing; on this branch all 9 pass:
+a direct URL (control), a redirect within a site, a redirect to another public origin, and
+refusals of a loopback landing, a name that resolves to `10.0.0.5`, and an `http` landing.
+
+**The redirects are real, not stubbed, and that took work worth keeping.** A stubbed `302`
+cannot test this on Playwright 1.56.1: the redirected follow-up request is never delivered
+to a route and the worker's fetch fails with a bare `Failed to fetch`. The harness gained
+`startSite()` (an https server and an http server on loopback with a certificate minted by
+`openssl` into a temporary directory, so no key is committed), `SITE_ARGS` (resolver rules
+that map three invented hostnames to loopback, `--ignore-certificate-errors`, and
+`--no-proxy-server`), `routeDns()`, `routeRaw()`, and `launch({ args })`.
+`--no-proxy-server` is required: Chromium on Linux honours `https_proxy` from the environment,
+which this sandbox exports, and a name mapped to loopback went through the proxy and never
+reached the server. One mistake of mine cost time and is recorded so it is not repeated:
+`startSite` built the request handler before the servers were listening, so the redirect
+targets were built with port 0, Chrome refused them as an unsafe port, and every cross-origin
+redirect looked like a Chrome limitation. It was the helper.
+
+Left stale on purpose: the sentence in `.agents/rules/repository.md` that a tool fetching a
+model-supplied URL must check "before the request" cannot hold for redirects in a browser.
+It is an instruction file, so it is raised as a finding for the owner and named in the pull
+request body, not edited here. Not tested: any real site, real DNS-over-HTTPS, or a real
+redirect chain longer than one hop.
+
+Documentation changed in the same commit: `wiki/environments/env.md` (guard section),
+`.agents/wiki/context/repository-map.md` (the restatement is replaced by a link),
+`.agents/memory/state/repository-state.md`, and `wiki/environments/setup.md` (step 16 and a
+row in the failure table). `npm test` gained `verify:worker`.
+
+Task 6 adds its stream checks to `verify-worker.mjs` and uses its `say`, `call`, `DONE`,
+`send` and `stubRounds` helpers with `routeRaw`.
+
 ### Task 4 — fix/chat-routing
 
 A reply takes seconds and the history list stays clickable, but everything the send did when

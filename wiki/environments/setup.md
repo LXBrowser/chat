@@ -177,6 +177,10 @@ never been run by anyone. Expect to find things that are not in here.
     asked in. If the title tool renames the chat, it is that chat that changes. Delete the
     chat while it is being answered and the status under Send says so; the answer is not
     filed anywhere else.
+16. **Make it read a page that redirects.** Ask it to read an address you know forwards
+    elsewhere — an apex domain that forwards to its `www.` form is the usual one. The answer
+    should come from the page it lands on. An answer saying a page "returned 0" means the
+    redirect was not followed, which is the fault this step exists to catch.
 
 ### If a send fails
 
@@ -195,6 +199,7 @@ The reason appears under the Send button, and the status line above the conversa
 | `Only https URLs can be read` | A tool was pointed at a local file or a plain-http link. Expected — the model has to follow a search result instead. |
 | `Could not check where <host> points` | The DNS-over-HTTPS lookup failed or returned nothing, so the page was not read. The guard fails closed on purpose; retry, and check for a network that blocks `cloudflare-dns.com`. |
 | `… resolves to 169.254.169.254, which is a link-local address` | The guard caught a page trying to steer the agent at cloud credentials. This is the guard working. |
+| `<host> redirected to <other>, which was not read` | The page forwarded the request to a private address or to plain `http`, and the guard refused to read it. The request itself was already sent; see [Environment](env.md). |
 
 ## Verifying the database layer
 

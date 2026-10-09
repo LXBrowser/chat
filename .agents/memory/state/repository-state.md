@@ -147,7 +147,8 @@ pull the credential in even by accident.
   stretch and no ping at all, which completed normally. The ping is not what prevents the
   reported error; the reconnect is.
 * **`https://*/*` is granted** so `read_page` can follow a search result to any host. It is
-  deliberate and it is broad; the guards are in the tool, not the permission. The guard
+  deliberate and it is broad; the guards are in the tool, not the permission. A redirect is
+  followed and its landing re-checked, and a refused landing still costs one request. The guard
   resolves DNS over HTTPS and **fails closed**, so a network that blocks
   `cloudflare-dns.com` stops `read_page` working rather than letting it read unchecked.
 * **The search parser is the fragile part.** It reads DuckDuckGo's keyless HTML with no API
@@ -163,9 +164,11 @@ interface and nothing more. The send path has since been driven with a **stubbed
 so the port, the SSE parser, delta assembly, storage and repaint are all exercised — but
 against a body this repository wrote, not OpenRouter's. Whether OpenRouter accepts these
 requests or these tool schemas, whether the streaming caret behaves over a live stream,
-whether DuckDuckGo still serves markup the parser recognises, and whether Chrome returns a
-readable `Location` for a `redirect: 'manual'` response, which the redirect guard depends on
-— all unobserved. The tool loop has only been driven by scripted SSE bodies.
+and whether DuckDuckGo still serves markup the parser recognises — all unobserved. The tool
+loop has only been driven by scripted SSE bodies. Observed on 2026-10-09: Chrome does **not**
+return a readable `Location` for a `redirect: 'manual'` response, so the per-hop redirect
+guard could never have worked; `read_page` now follows redirects and checks where they land
+(see `wiki/environments/env.md`), driven against a real local server and real redirects.
 
 Every module passes `node --check`, every import and DOM id resolves, no `style` attribute
 or style assignment remains anywhere in `src/`, all 47 classes in `index.html` are defined
