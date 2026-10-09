@@ -178,7 +178,8 @@ arrives here is a genuine request or transport failure.
   comments removed, entities decoded in a single pass. Long pages are truncated; a page with
   no readable text is an error rather than an empty answer.
 * **`read_page` is guarded**, because a tool that fetches whatever the model names is the
-  prompt-injection shape. At every hop, including every redirect hop: https only; the
+  prompt-injection shape. Before the request, and again on where a redirect lands (see
+  Security): https only; the
   hostname **resolved and every returned address checked**, refusing loopback, private,
   link-local and reserved IPv4, `169.254.0.0/16` where cloud metadata lives, and any IPv6
   outside `2000::/3` — including `::ffff:127.0.0.1` and the other ways an IPv4 address is
@@ -210,6 +211,25 @@ arrives here is a genuine request or transport failure.
 * `.agents/memory/tasks/agents-setup.md` — record of this scaffold.
 * `.agents/memory/tasks/extension-foundation.md` — record of the design-system scatter, the
   extension shell, and the core UI logic.
+
+## Changed
+
+### The dropzone says its files are not sent
+
+One line under the dropzone: files are listed only, and their contents are not sent to the
+model yet. A listed file read as a file the model had, which it never was. It is a label and
+not a feature — reading attached files is still not built. **Nothing to do.**
+
+### The browser harness starts on a current Chromium and tests real redirects
+
+`launch()` now waits until the service worker has `chrome.storage` before it hands the worker
+back; Chrome announces a worker before injecting those APIs, and a test that ran in that
+window threw a `TypeError` that read like a manifest with no `storage` permission. Two suites
+were added, `verify:ui` (deleting, routing, the key modal, the dropzone) and `verify:worker`
+(`read_page` against a real local server with real redirects, and the stream). **If you run
+the harness:** Playwright has to match your Chromium build, and section F of `verify.mjs`
+needs a Playwright that reports a restarted worker — 1.56.1 does not, and section F passes
+on its own on a fresh launch.
 
 ## Fixed
 
@@ -397,6 +417,78 @@ gate-before-wiring is what makes a cancelled gate recoverable. **The gate is del
 not a numbered step**: cancelling the modal is a decision, not a fault, and labelling it
 "step 1 failed" would report the owner's own choice back to them as a broken browser.
 
+### A chat that had messages could not be deleted
+
+`deleteSession` read its message keys from the `session_id` index and then called `delete()`
+on the index. An IndexedDB index can read and count and has no `delete`, so any chat holding
+a message threw `messages.delete is not a function` and stayed, with its messages, and the
+interface showed nothing. An empty chat never reached the line, which is why delete had been
+recorded as working: it had only been driven on empty chats. The delete now goes through the
+object store. **Nothing to do** — a chat that would not delete can now be deleted.
+
+### An answer, or a rename, could land in the wrong chat
+
+A reply takes seconds and the history list stays clickable, but the answer, the stored turns
+and the title tool all used "the open chat" at the moment they finished. Ask in one chat, click
+another, and the first kept only the question while the second received the answer; the
+streaming bubble and a title rename followed the same path. A send now fixes its chat when
+Send is pressed, and the bubble shows only in its own chat, collects text out of sight, and
+comes back when that chat is reopened. A chat deleted mid-answer ends the send with `This chat
+was deleted before the answer arrived.` instead of filing the answer elsewhere. **Nothing to
+do** — an answer that was filed under the wrong chat before this stays where it was put.
+
+### `read_page` failed on every redirect
+
+The guard fetched with `redirect: 'manual'` and read `Location` from the response. A browser
+returns a manual redirect as an opaque response with status 0 and no headers, so the branch
+that followed redirects could never run and every redirecting address — an apex domain to its
+`www.` form, a trailing slash, a shortener — reached the model as `<host> returned 0.` This is
+the "readable `Location`" assumption listed below as unverified; it is now observed, and it
+was false. **Nothing to do.** What the fix costs is under Security.
+
+### The stream parser dropped, corrupted or hid things
+
+Four faults, all reproduced. A tool call echoed back to the provider carried the
+streaming-only `index` field. A provider that repeats a call's id and name on every chunk had
+them concatenated — `call_repcall_repcall_rep` — so the tool was never found. An error the
+provider reported inside the stream was ignored: with no text before it that read as "The
+model returned an empty answer", and **with some text before it, the cut-off text was saved as
+a complete answer and nothing was shown.** And a last frame with no trailing newline was
+dropped. A provider failure now stops the answer with `The provider stopped the answer:
+<reason>`, saves nothing, and is not retried. **Nothing to do for the first, second and fourth.
+For the third: an answer cut off this way before this fix was saved as a finished one and
+cannot be told apart from one that finished — if a stored answer looks truncated, that is
+why.**
+
+### Enter on Cancel replaced the stored API key
+
+The key modal listened for Enter on the whole document, so Enter on the Cancel button ran the
+save path: it stored what had been typed, closed the modal, and stopped Cancel from running.
+The one place on the page where Cancel wrote a credential. Enter now acts only from the field;
+on a button it is that button's own action. **If you ever typed in the key field, tabbed to
+Cancel and pressed Enter, the typed text became your key — if sends now fail with 401,
+replace the key in Settings.**
+
+## Security
+
+### `read_page` follows redirects, and what that costs
+
+Before, the guard checked every hop; that could not work (above). Now it checks the address it
+is given before the request — https only, the hostname resolved over DNS-over-HTTPS and every
+address checked, fail closed — then follows redirects with `credentials: 'omit'` and runs the
+same checks on **where the request landed**, cancelling a refused landing with its body unread.
+The error names both hosts.
+
+**The cost is one request that cannot be prevented.** A browser does not tell an extension where
+a redirect is going until it has followed it, so a public page that redirects to a private
+address, a private name or plain `http` causes one GET to it, without cookies, before it is
+refused. Nothing it returns is read or passed to the model. Measured against a real local
+server, not assumed: the browser tests assert exactly one request to each refused landing.
+Reading an `http` landing is additionally blocked by Chrome unless the server sends CORS
+headers, because the manifest grants `https` hosts only; the extension's own scheme check is
+what refuses one that does. **If your threat model forbids even a request whose answer is never
+read, do not use `read_page`.** Nothing else about what the model sees has changed.
+
 ## Not in this release
 
 * **No synthesis.** Sub-agents each make a real OpenRouter call and answer independently.
@@ -459,10 +551,11 @@ own `401 — User not found`. Nothing was stubbed and it cost nothing.
 
 **This is still not a real OpenRouter answer.** What has never seen a live request is
 everything past the first answer: whether OpenRouter accepts these tool schemas, whether
-the streaming caret behaves over a live stream, whether DuckDuckGo still serves markup this
-parser recognises, and whether Chrome returns a readable `Location` for a
-`redirect: 'manual'` response as the redirect guard assumes. The tool loop and sub-agent
-fan-out have been driven only by scripted SSE bodies.
+the streaming caret behaves over a live stream, and whether DuckDuckGo still serves markup
+this parser recognises. The tool loop and sub-agent fan-out have been driven only by scripted
+SSE bodies. One item that used to be on this list is settled: Chrome does **not** return a
+readable `Location` for a `redirect: 'manual'` response, which the redirect guard had
+assumed — observed on 2026-10-09 and fixed, see Fixed and Security.
 
 **The centre pane and the key modal are verified by measurement, not by reading the
 stylesheet.** Alignment, because a rule present in the CSS and overridden later still lays
@@ -531,12 +624,13 @@ recorded because the instinct on a re-run is to go looking for a second real bug
 
 Not verified: **the request path.** Whether OpenRouter accepts these requests or these tool
 schemas, whether the streaming caret behaves over a live stream, whether DuckDuckGo still
-serves markup this parser recognises, and whether Chrome returns a readable `Location` for a
-`redirect: 'manual'` response as the redirect guard assumes. The tool loop has been driven
-only by scripted SSE bodies. Two layout cases are also still unobserved: the right pane
-below its 140px composer floor, and the layout under 900px where the responsive rules give
-`.pane` a `min-height: 260px`. Neither harness nor checks are committed — the repository
-has no package manager, no build step and no runner.
+serves markup this parser recognises. The tool loop has been driven only by scripted SSE
+bodies. (Whether Chrome returns a readable `Location` for a manual redirect was on this list;
+it does not, and `read_page` was fixed — see Fixed.) Two layout cases are also still
+unobserved: the right pane below its 140px composer floor, and the layout under 900px where
+the responsive rules give `.pane` a `min-height: 260px`. The browser harness and its checks
+are committed under `tests/e2e/`, with their own `package.json` kept out of the shipped
+tree; the extension itself still has no package manager, no build step and no runner.
 
 The procedure is in [Setup](../../../../environments/setup.md).
 
@@ -546,8 +640,9 @@ The procedure is in [Setup](../../../../environments/setup.md).
   modified.
 * A `.gitignore` excluding `.agents/plans/` was added during this work and **is**
   committed, on its own.
-* `deepseek/deepseek-v4-flash` is in the model picker exactly as supplied and has not been
-  verified against OpenRouter's catalogue. A wrong id fails loudly at request time.
+* `deepseek/deepseek-v4-flash` is in the model picker exactly as supplied. It is listed in
+  OpenRouter's public catalogue as of 2026-10-09, which confirms the id and nothing more —
+  it has not been used with a real key. A retired id would fail loudly at request time.
 * The design system at `.agents/design/` departs from the shared set's five-tree
   directory mandate, by explicit owner instruction. Recorded in `AGENTS.md` §Placement.
 * The OpenRouter modal is opaque, not glass — it covers page content. See

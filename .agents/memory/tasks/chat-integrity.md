@@ -61,6 +61,35 @@ ordinary web. Done when:
 
 ## 2026-10-09
 
+### Task 10 — release/0.1.0
+
+The version stays `0.1.0`. The repository has no release and no tag, so 0.1.0 was never
+released and its changelog may be corrected in place; a bump was not requested. No tag was
+created and no `wiki/logs/` directory was added.
+
+`wiki/logs/0/1/0/CHANGELOG.md` is the one document allowed to lag a change, and it is where
+the fixes are recorded, in the shared section order. **Changed:** the dropzone label, and the
+harness. **Fixed:** the chat that could not be deleted, the answer or rename filed in the wrong
+chat, `read_page` failing on every redirect, the four stream faults, and Enter on Cancel
+replacing the key. **Security:** `read_page` now follows redirects and what that costs, stated
+as one request that cannot be prevented and was measured. Each entry says what a reader has to
+do; two matter to someone who already used the extension — an answer cut off by a provider
+failure before the fix was saved as a finished one, and a key typed in the field and then
+"cancelled" with Enter before the fix became the stored key.
+
+The same pass corrected four passages of that changelog that were wrong: the guard described
+"at every hop, including every redirect hop"; the "readable `Location`" assumption listed as
+unverified, in two places, which is now observed and false; the model-id note; and one
+adjacent sentence saying the harness and its checks were not committed, which stopped being
+true when they moved under `tests/e2e/`.
+
+**Left open on purpose.** This task is meant to fill the `PR` column above and mark the record
+`done`. No pull request exists yet — the owner has not been asked, and the plan requires a
+separate yes before one is opened — so there is no number to write. The column is empty and the
+status stays `in-progress`. Once the pull requests are opened, one follow-up commit on this
+branch fills the column and sets `status: done`; nothing is stacked above this branch, so it
+rebases nothing.
+
 ### Task 9 — docs/stale-claims
 
 Claims that were already false before any change in this record, found while reading the
