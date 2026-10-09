@@ -61,6 +61,36 @@ ordinary web. Done when:
 
 ## 2026-10-09
 
+### Task 2 — test/e2e-harness-startup
+
+`launch()` now waits until the worker has `chrome.runtime` and `chrome.storage` before it
+hands the worker back (`ready()` in `tests/e2e/harness.mjs`). Chrome announces a service
+worker before it injects those APIs, so a test that evaluated in that window saw a `chrome`
+object holding only `loadTimes` and `csi`, and `chrome.storage.local` threw a `TypeError`
+that reads like a manifest with no `storage` permission. A worker that really lacks them
+now times out with a message that says so.
+
+`awaitWorker(context)` replaces `context.serviceWorkers()[0]` in section F of `verify.mjs`.
+It tries every known worker and waits for the next announcement when none answers. It is
+called `awaitWorker`, not `liveWorker` as the plan first named it, because `verify.mjs`
+already has a local called `liveWorker`.
+
+Shown failing and passing, not assumed: before, `smoke.mjs` died in `seedKey` with
+`Cannot read properties of undefined (reading 'local')`; after, it runs to completion. With
+the change, `static` is 11/11, `verify-ping` 3/3, and sections A–E of `verify.mjs` pass.
+
+**Left open — section F of `verify.mjs` cannot finish inside the full run on Playwright
+1.56.1.** That is the version installed locally to match the sandbox's Chromium; the
+declared range is `^1.63.0`. After D stops the worker, Chrome starts a new one (it appears
+in the browser's target list once the page sends again), but Playwright keeps listing the
+dead handle and emits no `serviceworker` event, so no live handle can be found. Section F
+run on its own on a fresh launch passes 4/4, so its logic is unaffected. Not verified on
+the declared range. Locally, routing worker requests on 1.56.1 also needed
+`PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS=1`; without it the stub is bypassed.
+
+Later tasks add their checks in new files rather than to `verify.mjs`, so they are not
+affected by section F.
+
 ### Task 1 — chore/chat-integrity-plan
 
 Created this record and its row in `memory-index.md`. No code changed. The confirmed list

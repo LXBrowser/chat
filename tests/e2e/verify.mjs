@@ -8,7 +8,7 @@
  */
 
 import {
-  launch, pageUrl, routeOpenRouter, seedKey, watchErrors, close, checks,
+  launch, awaitWorker, pageUrl, routeOpenRouter, seedKey, watchErrors, close, checks,
 } from './harness.mjs';
 
 const t = checks();
@@ -253,8 +253,9 @@ await context.unroute('https://openrouter.ai/**');
 // nothing in flight when the tick comes and there is nothing to observe.
 await routeOpenRouter(context, [{ text: 'a long one', delayMs: 32000 }]);
 
-// Test D killed the worker, so the handle from `launch()` is dead. Take the live one.
-const liveWorker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker', { timeout: 15000 }));
+// Test D killed the worker, so the handle from `launch()` is dead. Take the live one —
+// `serviceWorkers()[0]` can still be the stopped one while its replacement registers.
+const liveWorker = await awaitWorker(context);
 
 // Count the pings the worker actually receives. A second onConnect listener, so the
 // worker's own is untouched.
