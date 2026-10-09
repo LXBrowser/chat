@@ -177,6 +177,8 @@ async function handle(port, message) {
       },
       (delta) => post(port, { type: 'delta', requestId, text: delta }),
       (toolCall) => requestPageTool(port, requestId, toolCall),
+      // Not terminal: the request still ends in exactly one `done` or one `error`.
+      (text) => post(port, { type: 'notice', requestId, text }),
     );
 
     post(port, { type: 'done', requestId, text: answer });
@@ -195,8 +197,11 @@ async function handle(port, message) {
  *
  * @returns {Promise<string>} the final answer text.
  */
-async function converse(spec, onDelta, askPage) {
+async function converse(spec, onDelta, askPage, onNotice = () => {}) {
   const conversation = spec.conversation;
+
+  /** The tools on offer. Dropped for the rest of the conversation if the model refuses them. */
+  let tools = spec.tools;
 
   /** What the model has called so far, by name — for the error if it never stops. */
   const called = new Map();
@@ -204,18 +209,36 @@ async function converse(spec, onDelta, askPage) {
   for (let round = 0; round <= MAX_TOOL_ROUNDS; round += 1) {
     // The last request the loop allows. Tools stay declared — a conversation that already holds
     // tool calls needs them declared on some providers — but the model may not use them.
-    const lastChance = round === MAX_TOOL_ROUNDS && Boolean(spec.tools?.length);
+    const lastChance = round === MAX_TOOL_ROUNDS && Boolean(tools?.length);
 
-    const { content, toolCalls } = await streamChat(
-      {
-        model: spec.model,
-        messages: conversation,
-        tools: spec.tools,
-        toolChoice: lastChance ? 'none' : undefined,
-        signal: spec.signal,
-      },
-      onDelta,
-    );
+    const request = () =>
+      streamChat(
+        {
+          model: spec.model,
+          messages: conversation,
+          tools,
+          toolChoice: lastChance ? 'none' : undefined,
+          signal: spec.signal,
+        },
+        onDelta,
+      );
+
+    let result;
+    try {
+      result = await request();
+    } catch (err) {
+      // Only the very first request, and only for this one reason. A model with no tool
+      // support is refused before anything is generated, so asking again without tools is not
+      // a second charge; any other failure, or the same one later on, is not this.
+      if (round !== 0 || !tools?.length || !isToolSupportError(err)) throw err;
+
+      tools = undefined;
+      explainNoTools(conversation);
+      onNotice(NO_TOOLS_NOTICE);
+      result = await request();
+    }
+
+    const { content, toolCalls } = result;
 
     if (!toolCalls.length) return content;
 
@@ -247,6 +270,50 @@ async function converse(spec, onDelta, askPage) {
   }
 
   throw new Error('The conversation did not produce an answer.');
+}
+
+/** What the page shows while a model with no tool support answers. Short: it sits in one line. */
+const NO_TOOLS_NOTICE = 'no tool support — answering without search';
+
+/**
+ * What OpenRouter, and providers behind it, say when a model cannot take tools.
+ *
+ * Narrow on purpose. A wrong match hides a real error behind a silent downgrade, so each pattern
+ * names tools and a lack of support together, within one sentence. A schema error that merely
+ * mentions a tool, a missing model, or a bad key does not match any of them.
+ */
+const NO_TOOL_SUPPORT = [
+  // OpenRouter: "No endpoints found that support tool use."
+  /no endpoints found[^.]*\btools?\b/i,
+  /\b(?:does not|doesn't|do not|don't) support[^.]*\btools?\b/i,
+  /\btools?\b[^.]*\b(?:is|are) not (?:supported|enabled|available)\b/i,
+  /\bfunction calling\b[^.]*\bnot (?:supported|enabled|available)\b/i,
+];
+
+/** Whether a failed request means "this model cannot use tools". */
+function isToolSupportError(err) {
+  return (
+    [400, 404, 422].includes(err?.status) && NO_TOOL_SUPPORT.some((pattern) => pattern.test(err.message))
+  );
+}
+
+/**
+ * Tells a model that has no tools not to behave as though it had them.
+ *
+ * The system prompt says the model can search and read pages, and it is seeded once and never
+ * refreshed, so it cannot be edited out of existing installs. A sentence appended to the copy
+ * sent with this conversation does the job, for this conversation only.
+ */
+function explainNoTools(conversation) {
+  const note =
+    'This model cannot call tools here, so do not offer to search or read pages. If a question ' +
+    'needs current information, say that you cannot look it up and answer from what you know.';
+
+  if (conversation[0]?.role === 'system') {
+    conversation[0] = { ...conversation[0], content: `${conversation[0].content}\n\n${note}` };
+  } else {
+    conversation.unshift({ role: 'system', content: note });
+  }
 }
 
 /**

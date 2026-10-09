@@ -189,6 +189,12 @@ never been run by anyone. Expect to find things that are not in here.
     The model should try a search or two, then say plainly that it could not search and answer
     from what it knows. It must not end in `Send failed`: the sixth tool round is followed by a
     request that forbids tools, so the loop ends in an answer. Unblock afterwards.
+18. **Use a model that cannot use tools.** Type the id of a model whose OpenRouter page lists no
+    `tools` among its supported parameters into the custom model box (see
+    [Environment](env.md)), and send anything. The status line should read `Working… · no tool
+    support — answering without search`, and an answer should arrive. If the send ends in
+    `OpenRouter returned 404 — No endpoints found that support tool use`, the fallback did not
+    run. Clear the custom box afterwards.
 
 ### If a send fails
 

@@ -78,6 +78,13 @@ function connect() {
         void answerToolRequest(message, entry);
         break;
 
+      case 'notice':
+        // Something the person should know about the request while it runs — the model has no
+        // tool support and is answering without them. Not terminal: the request still ends in
+        // exactly one `done` or one `error`, so nothing is settled here.
+        entry.onNotice?.(message.text);
+        break;
+
       case 'pong':
         // Evidence the worker is alive. Nothing to do with it, and deliberately not
         // forwarded to `entry` — it carries no requestId, so it would be dropped anyway.
@@ -245,6 +252,8 @@ export function isAvailable() {
  * @param {(name: string, args: string) => Promise<string>} [spec.onTool] Runs a page tool.
  * @param {(call: {name: string, arguments: string}) => void} [spec.onToolCall] Called when
  *        the worker asks for a tool, so the interface can log it before it runs.
+ * @param {(text: string) => void} [spec.onNotice] Called with a short note about how the
+ *        request is being handled, such as a model that cannot use tools.
  * @returns {Promise<string>} the complete response text.
  */
 export function chat({
@@ -256,6 +265,7 @@ export function chat({
   onDelta = () => {},
   onTool,
   onToolCall,
+  onNotice,
 }) {
   const requestId = `req-${nextRequestId++}`;
 
@@ -271,7 +281,7 @@ export function chat({
       return;
     }
 
-    pending.set(requestId, { onDelta, onTool, onToolCall, resolve, reject, text: '' });
+    pending.set(requestId, { onDelta, onTool, onToolCall, onNotice, resolve, reject, text: '' });
     startKeepAlive();
 
     try {

@@ -70,6 +70,38 @@ the tree before its fix and passes after.
 
 ## 2026-10-09
 
+### Task 3 — fix/tool-less-models
+
+The extension declares its tools on every send. OpenRouter refuses such a request to a model
+with no tool support — a 404, "No endpoints found that support tool use", before anything is
+generated — so with a custom model id of that kind every send failed with the provider's text and
+the app was unusable. Reproduced with a stub that answers 404 to any request carrying `tools`.
+
+`converse` in `src/background.js` now retries the **first** request once without tools when the
+error is an HTTP 400, 404 or 422 whose message names missing tool support (`isToolSupportError`,
+four narrow patterns, each tying tools to a lack of support within one sentence). It appends a
+sentence to the system message of that conversation saying the model cannot call tools, because
+the seeded prompt says it can and is never refreshed, and posts a new non-terminal `notice`
+message so the page can say so. `openrouter.js` hands a notice to `onNotice`; `app.js` keeps it
+in the status row for the rest of the send as `activityNote`, apart from `activity`, which the
+first token would have overwritten. The one-`done`-or-`error` guarantee is untouched. The retry is
+not a second charge: the refusal comes before generation.
+
+Checks are section D of `tests/e2e/verify-worker.mjs`. On the previous task's commit 36 of 42 pass
+and the six failures are the fault: the 404 reaches the user, nothing is stored, only one request
+is made, no notice, no system sentence. The three controls pass on both trees by design — a 404
+about a missing model, a 401, and a 400 about a tool schema are each shown as they are and not
+retried. On this branch all 42 pass. Both presets support tools (checked in the catalogue), so
+only the custom model field reaches this; 68 of 458 catalogue models list no `tools`.
+
+Not established: the exact wording a given provider uses. The OpenRouter message is written from
+its documented behaviour and not captured from a live refusal; the other patterns cover other
+phrasings and are untested against a real one.
+
+Documentation changed in the same commit: `wiki/environments/env.md` (what happens with a model
+that cannot use tools, and the catalogue count with its date) and `wiki/environments/setup.md`
+(step 18).
+
 ### Task 2 — fix/tool-round-limit
 
 `converse` in `src/background.js` ran rounds 0 to 6 and threw at round 6 if the model was still

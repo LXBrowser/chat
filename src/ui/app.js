@@ -67,16 +67,24 @@ let sendNote = '';
 let activity = { text: 'Idle', running: false, done: false };
 
 /**
- * Repaints the status row from the current activity and the live agent count.
+ * A fact about the current send that should stay in view for all of it, such as a model that
+ * has no tool support and is answering without search. Kept apart from `activity` because
+ * that changes with every token — "Writing…" would overwrite a note held in it the moment
+ * the first word arrived. Cleared when the next send starts.
+ */
+let activityNote = '';
+
+/**
+ * Repaints the status row from the current activity, the note, and the live agent count.
  *
- * The count is appended to the text rather than held in a badge of its own: there is one
+ * Both are appended to the text rather than held in a badge of their own: there is one
  * row and it says everything, which is what makes "it never grows a second line" a property
  * of the design rather than a promise.
  */
 function paintActivity() {
   const running = agents.activeCount();
-  const count = running ? `${running} running` : '';
-  views.setActivity(count ? `${activity.text} · ${count}` : activity.text, activity);
+  const parts = [activity.text, activityNote, running ? `${running} running` : ''].filter(Boolean);
+  views.setActivity(parts.join(' · '), activity);
 }
 
 /**
@@ -503,6 +511,7 @@ async function runMainAgent(history, sessionId) {
   const agent = agents.spawn({ name: 'Main Agent', task: summarise(history) });
 
   const handle = views.startStream(sessionId);
+  activityNote = '';
   setActivity('Working…', { running: true });
 
   // Set once, on the first chunk. Re-running it per delta would rewrite the same text
@@ -540,6 +549,10 @@ async function runMainAgent(history, sessionId) {
       setActivity(toolActivity(call.name), { running: true });
     },
     onTool: (name, args) => runPageTool(name, parseArgs(args), { sessionId }),
+    onNotice: (text) => {
+      activityNote = text;
+      paintActivity();
+    },
   };
 
   try {
