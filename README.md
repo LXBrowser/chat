@@ -1,23 +1,27 @@
 # @lxbrowser/chat
 
 A Multi-Agent Chat **Chrome extension**. It replaces your new tab with a three-pane
-workspace where a main agent delegates to sub-agents, calls a built-in search-and-read
-tool, and keeps every conversation in local storage.
+workspace where a main agent answers you, can fan a prompt out to sub-agents, calls a
+built-in search-and-read tool, and keeps every conversation in local storage.
 
-- **Version** `0.1.0` — a shell: manifest, database layer, and interface
+- **Version** `0.1.0` — it chats: prompts go to OpenRouter and answers stream back. What has
+  and has not been checked is in the [Overview](wiki/information/overview.md)
 - **License** MIT © 2026 LXBrowser — [LICENSE](LICENSE)
 - **Stack** Chrome Manifest V3 · vanilla HTML/CSS/ES6+ modules · IndexedDB · OpenRouter
 - **Dependencies** none — no framework, no bundler, no CDN
 
 ## Features
 
-* **Three floating panes** — chat history and the synthesized response, live agent status
-  and logs, and your prompt and controls. Each scrolls independently.
-* **Multi-agent mode** — a toggle turns delegation on, a count bounds it, and agents leave
-  the status dropdown as soon as they finish.
+* **Three floating panes** — your chats on the left; the model picker, one status line and
+  the conversation in the centre; your prompt, title, files and controls on the right. Each
+  scrolls independently.
+* **Multi-agent mode** — a toggle turns sub-agents on and a count bounds them. Each makes its
+  own OpenRouter call, and the status line shows how many are running. Their answers are not
+  merged or shown yet.
 * **Local-first storage** — conversations live in IndexedDB in your browser.
 * **Search and read** — the main agent searches the web and pulls readable text off a page.
-* **Your own instructions** — an `AGENTS.md` becomes the agents' system prompt.
+* **Instructions that ship with it** — the main agent's system prompt is
+  `src/prompts/system-instructions.md`, seeded into IndexedDB on first run.
 
 ## Quick start
 
