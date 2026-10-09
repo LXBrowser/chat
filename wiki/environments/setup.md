@@ -155,8 +155,10 @@ never been run by anyone. Expect to find things that are not in here.
     value — **`sk-or-v1-••••…`, never the real key** — with an **Edit** button beside it
     and **Update key** greyed out. Press **Edit**: the field empties, becomes editable, and
     Update key turns on. Now press **Cancel** and reopen Settings — the mask is back, and
-    your old key still works, because Cancel writes nothing. Press **Edit**, paste a new
-    key, press **Update key**, and send something: the new key is the one being used.
+    your old key still works, because Cancel writes nothing — from the keyboard too: type
+    something after **Edit**, Tab to **Cancel**, press Enter, and the old key is still the
+    stored one. Press **Edit**, paste a new key, press **Update key**, and send something:
+    the new key is the one being used.
     *If the mask ever shows something other than dots, or if Cancel changed your key, stop
     and say so — that is a credential leak and it is the one thing on this page that is not
     a cosmetic fault.*

@@ -250,8 +250,63 @@ t.ok('its answer is not filed under a chat that did not ask', misfiled.length ==
 t.ok('the person is told the chat was deleted', /deleted/i.test(statusB4), `status: "${statusB4}"`);
 
 // ===========================================================================
+// C. The key modal: Enter belongs to the control that has focus
+// ===========================================================================
+//
+// Reached through Settings with a key already stored, so the interface needs no fresh
+// launch. The key is read from the page's own `chrome.storage` — a test may do what the
+// page code is forbidden to — rather than through the worker handle, which can be a stale
+// one by now.
+
+console.log('\n--- C. the key modal ---');
+
 await context.unroute(OPENROUTER);
 
+const storedKey = () =>
+  page.evaluate(async () => (await chrome.storage.local.get('openrouter_api_key')).openrouter_api_key);
+const modalOpen = () => page.locator('#api-key-modal').isVisible();
+
+await page.reload();
+await page.waitForSelector('.history__item');
+const original = await storedKey();
+t.ok('a key is stored to begin with', typeof original === 'string' && original.length > 0, 'placeholder key');
+
+// Open Settings, unlock the field, type a replacement — then change your mind with the keyboard.
+await page.click('[data-action="open-settings"]');
+await page.click('[data-action="edit-key"]');
+await page.fill('#api-key-input', 'sk-or-v1-TYPED-THEN-ABANDONED');
+await page.focus('[data-action="cancel-key"]');
+await page.keyboard.press('Enter');
+await page.waitForTimeout(300);
+
+t.ok('Enter on Cancel closes the modal', !(await modalOpen()), (await modalOpen()) ? 'the modal is still open' : '');
+const afterCancel = await storedKey();
+t.ok('...and stores nothing', afterCancel === original,
+  afterCancel === original ? 'the original key is unchanged' : `the stored key is now "${afterCancel}"`);
+
+// Control: Enter inside the field is still the keyboard way to save.
+await page.click('[data-action="open-settings"]');
+await page.click('[data-action="edit-key"]');
+await page.fill('#api-key-input', 'sk-or-v1-SAVED-WITH-ENTER');
+await page.keyboard.press('Enter');
+await page.waitForTimeout(300);
+
+t.ok('Enter in the field still saves (control)', (await storedKey()) === 'sk-or-v1-SAVED-WITH-ENTER',
+  `stored: "${await storedKey()}"`);
+t.ok('...and closes the modal', !(await modalOpen()));
+
+// Control: Enter on the primary button submits once — the click, not a second path.
+await page.click('[data-action="open-settings"]');
+await page.click('[data-action="edit-key"]');
+await page.fill('#api-key-input', 'sk-or-v1-SAVED-FROM-THE-BUTTON');
+await page.focus('[data-action="save-key"]');
+await page.keyboard.press('Enter');
+await page.waitForTimeout(300);
+
+t.ok('Enter on the Update key button saves (control)', (await storedKey()) === 'sk-or-v1-SAVED-FROM-THE-BUTTON',
+  `stored: "${await storedKey()}"`);
+
+// ===========================================================================
 const allPassed = t.report();
 console.log(allPassed ? '\nALL CHECKS PASSED' : '\nSOME CHECKS FAILED');
 await close();

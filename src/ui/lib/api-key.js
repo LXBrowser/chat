@@ -146,6 +146,12 @@ export function promptForKey({ hasKey }) {
       }, { signal });
     document.addEventListener('keydown', (event) => {
       if (event.key !== 'Enter') return;
+      // Only from the field. This listener sits on `document`, so it also hears Enter on
+      // every button in the modal — and Enter on a focused button already means that
+      // button: Cancel cancels, Edit edits, Update key saves through its own click. Acting
+      // on those too saved whatever was typed when the person pressed Cancel, and
+      // `preventDefault` then stopped Cancel from running at all.
+      if (event.target !== input) return;
       // Enter follows the primary action, which means it does nothing while locked —
       // otherwise it would save the mask back over a working key.
       if (!locked) void onPrimary(event);

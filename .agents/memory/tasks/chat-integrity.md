@@ -61,6 +61,31 @@ ordinary web. Done when:
 
 ## 2026-10-09
 
+### Task 7 — fix/key-modal-enter
+
+The key modal listens for Enter on `document`, so it also heard Enter on every button in the
+modal. With the field unlocked and a replacement typed, Tab to Cancel and Enter ran the save
+path instead: `onPrimary` stored what was typed, closed the modal, and `preventDefault`
+stopped the Cancel button's own click from running. Found by reading, then reproduced: the
+stored key became the abandoned text. It is the one place on this page where Cancel wrote a
+credential.
+
+The handler now acts only when the event's target is the field. Enter on a focused button is
+left to that button — Cancel cancels, Edit edits, Update key saves through its own click —
+and Enter in the field still saves.
+
+Checks are section C of `tests/e2e/verify-ui.mjs`. On the tree before the fix (the task 6
+commit) 30 of 31 pass and the one failure is the point: Enter on Cancel leaves the stored key
+as `sk-or-v1-TYPED-THEN-ABANDONED`. The two controls, Enter in the field and Enter on the
+Update key button, pass on both trees; on this branch all 31 pass. The key is read through the
+page's own `chrome.storage` in the test, not the worker handle, which can be stale by then.
+
+Not covered: the first-run gate with no key stored. It runs the same handler, but this suite
+seeds a key, so the empty-field path is reached only through Settings.
+
+Documentation changed in the same commit: `wiki/environments/setup.md` step 12 now says
+Cancel writes nothing from the keyboard too.
+
 ### Task 6 — fix/stream-parsing
 
 Four faults in how `src/background.js` reads and echoes the stream. All four were found by
